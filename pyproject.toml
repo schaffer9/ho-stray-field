@@ -1,0 +1,30 @@
+[project]
+name = "TPELM"
+version = "0.1.0"
+description = "Tensor Product Extreme Learning Machines"
+authors = [{ name = "Sebastian Schaffer", email = "sebastian.schaffer@univie.ac.at" }]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "jax",
+    "quadax",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "tensorly",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["tpelm"]
+
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules --cov=tpelm --cov-report=term-missing -ra -q"
+testpaths = ["test", "tpelm"]
