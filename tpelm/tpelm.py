@@ -1,9 +1,115 @@
-# from typing import Protocol
+import abc
+from typing import Sequence, Callable, overload
+from dataclasses import dataclass
 
-# from .tensor_grid import TensorGrid
-# from . import *
+from jax.tree_util import register_dataclass
+
+from . import *
+from .tucker_tensor import TuckerTensor, Factors, Core
+from .tensor_grid import TensorGrid
 
 
-# class TPELM(Protocol):
-#     def basis(self, tg: TensorGrid) -> tuple[jax.Array, ...]:
-#         ...
+class TPELM(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def rank(self) -> int:
+        ...
+
+    @abc.abstractmethod
+    def basis(self, x: jax.Array, mode: int) -> jax.Array:
+        ...
+
+    def __call__(self, tg: TensorGrid, core_tensor: Core) -> jax.Array:
+        factors = self.factors(tg)
+        tucker_tensor = TuckerTensor(core_tensor, factors)
+        return tucker_tensor.to_tensor()
+    
+    def factors(self, tg: TensorGrid) -> Factors:
+        modes = list(range(self.rank))
+        return tuple(self.basis(x, m) for x, m in zip(tg, modes))
+
+    def pinv(
+            self, 
+            tg: TensorGrid, 
+            alpha: jax.Array | float | tuple[jax.Array | float, ...] = 0.0, 
+            tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0
+        ) -> Factors:
+        if not isinstance(alpha, Sequence):
+            alpha = tuple(alpha for _ in tg)
+
+        if not isinstance(tol, Sequence):
+            tol = tuple(tol for _ in tg)
+
+        factors = self.factors(tg)
+        pinv_factors = tuple(regularized_pinv(X, wi, alpha_i, tol_i) for X, wi, alpha_i, tol_i in zip(factors, tg.weights, alpha, tol))
+        return pinv_factors
+    
+    def factors_derivative(self, tg: TensorGrid) -> tuple[Factors, Factors]:
+        modes = list(range(self.rank))
+        _factors, _factors_derivative = tuple(zip(
+            *(_elementwise_derivative(lambda x: self.basis(x, m), xi)
+            for xi, m in zip(tg, modes))
+        ))
+        return _factors, _factors_derivative
+
+
+@overload
+def fit(inv_factors: Factors, F: jax.Array) -> Core: ...
+
+
+@overload
+def fit(inv_factors: Factors, F: TuckerTensor) -> Core: ...
+
+
+@overload
+def fit(inv_factors: Factors, F: Callable, tg: TensorGrid) -> Core: ...
+
+
+def fit(
+    inv_factors: Factors,
+    F: jax.Array | TuckerTensor | Callable,
+    tg: TensorGrid | None = None
+) -> Core:
+    if tg is not None:
+        if not callable(F):
+            raise TypeError("`fit` requires a function is a tensor grid is provided.")
+        F = jnp.apply_along_axis(F, -1, tg.grid)
+        return fit_to_array(inv_factors, F)
+    elif isinstance(F, TuckerTensor):
+        return fit_to_tucker(inv_factors, F)
+    elif isinstance(F, jax.Array):
+        return fit_to_array(inv_factors, F)
+    else:
+        raise NotImplementedError(f"Cannot fit TPELM to {type(F)}. Provide the right hand side as array or Tucker tensor.")
+
+
+def fit_to_array(inv_factors: Factors, F: jax.Array) -> Core:
+    tucker_tensor = TuckerTensor(F, inv_factors)
+    return tucker_tensor.to_tensor()
+
+
+def fit_to_tucker(inv_factors: Factors, F: TuckerTensor) -> Core:
+    core, factors = F
+    factors = tuple(Xinv @ f for Xinv, f in zip(inv_factors, factors))
+    tucker_tensor = TuckerTensor(core, factors)
+    return tucker_tensor.to_tensor()
+
+
+def _elementwise_derivative(f, x):
+    def _f(x):
+        y = f(x)
+        return y, y
+    
+    df, y = jax.vmap(jax.jacfwd(_f, has_aux=True))(x)
+    return y, df
+
+
+def regularized_pinv(X: jax.Array, weights: jax.Array | None = None, alpha: jax.Array | float = 0.0, tol: jax.Array | float = 0.0):
+    if weights is None:
+        weights = jnp.ones((X.shape[0],))
+    
+    X = weights[:, None] * X
+    U, S, VT = jnp.linalg.svd(X, full_matrices=False)
+    Sinv = jnp.where((S ** 2 + alpha) < tol, 0.0, S / (S ** 2 + alpha))
+    Xinv = (VT.T * Sinv) @ (weights[:, None] * U).T  # compute pseudoinverse
+    return Xinv

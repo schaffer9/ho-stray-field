@@ -1,10 +1,11 @@
 from typing import NamedTuple
 
-from quadax import quadgk, quadcc
+from quadax import quadgk
 from quadax.utils import QuadratureInfo
 
 from . import *
-from .bspline import BSpline, fit
+from .tpelm import fit
+from .bspline import BSpline
 from .tensor_grid import TensorGrid
 from .integrate import sinc_quad
 from .tucker_tensor import TuckerTensor
@@ -16,7 +17,7 @@ class GS(NamedTuple):
 
 
 def _quad(g, x, interval, alpha, stds: int = 9, **kwargs):
-    s = jnp.sqrt(1 / (2 * alpha))
+    s = jnp.sqrt(1 / (2 * jnp.maximum(alpha, 1.0)))
     lb, ub = jnp.min(interval), jnp.max(interval)
     gaussian_interval = jnp.linspace(-s * stds, s * stds, 2 * stds + 1) - x
     _interval = jnp.sort(jnp.concatenate([interval, gaussian_interval, jnp.asarray([x])]))
@@ -47,8 +48,6 @@ def superpotential_factors(
         gs: GS,
         **kwargs
     ):
-
-    # TODO: eventually mul factor with omega
     modes = list(range(quad_tg.dim))
 
     def _integrate(f, alpha: jax.Array, mode: int):
@@ -72,23 +71,15 @@ def superpotential_factors(
     return factors, merge_quad_info(*info1, *info2)
 
 
-# def fit_superpotential(
-#     factors_pinv, factors_superpot, core
-# ):
-#     cores = jnp.asarray([
-#         [fit(factors_pinv, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
-#         for alpha_factors in factors_superpot
-#     ])
-#     core = jnp.sum(cores, axis=(0, 1))
-#     return core
-
-
-
-def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9):
-    omega, alpha = sinc_quad(rank, c0)
-    alpha = alpha ** 2
-    omega = 1 / jnp.sqrt(jnp.pi) * omega
-    return GS(omega, alpha)
+def fit_superpotential(
+    factors_pinv, factors_superpot, core
+):
+    cores = jnp.asarray([
+        [fit(factors_pinv, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
+        for alpha_factors in factors_superpot
+    ])
+    core = jnp.sum(cores, axis=(0, 1))
+    return core
 
 
 def merge_quad_info(*infos: QuadratureInfo) -> QuadratureInfo:

@@ -1,5 +1,6 @@
 
-from tpelm.bspline import basis, eval_spline, BSpline, fit, regularized_pinv
+from tpelm.tpelm import fit, regularized_pinv
+from tpelm.bspline import basis, eval_spline, BSpline  # , fit, regularized_pinv
 from tpelm.tensor_grid import TensorGrid
 from tpelm.tucker_tensor import TuckerTensor
 from tpelm.integrate import gauss
@@ -169,7 +170,7 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline.factors_pinv(tg_quad)
+        factors_pinv = bspline.pinv(tg_quad)
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         core = fit(factors_pinv, F)
 
@@ -217,7 +218,7 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline_result.factors_pinv(tg_quad)
+        factors_pinv = bspline_result.pinv(tg_quad)
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         f_core = fit(factors_pinv, F)  # and compute the tucker tensor format of the fit
 
@@ -227,7 +228,7 @@ class TestTPELMFit(JaxTestCase):
         tg_quad = TensorGrid(*nodes, weights=weights)
         tg_basis = TensorGrid(t1, t2)
         bspline = BSpline(tg_basis, degree=3)  # Then fit a new B-spline to the tucker format
-        factors_pinv = bspline.factors_pinv(tg_quad)
+        factors_pinv = bspline.pinv(tg_quad)
         f_factors = bspline_result.factors(tg_quad)
         F = TuckerTensor(f_core, f_factors)
         
@@ -248,7 +249,7 @@ class TestTPELMFit(JaxTestCase):
         tg_basis = TensorGrid(t1)
         bspline = BSpline(tg_basis, degree=3)
 
-        factors_pinv = bspline.factors_pinv(tg_basis)
+        factors_pinv = bspline.pinv(tg_basis)
         F = 42
         with self.assertRaises(NotImplementedError):
             fit(factors_pinv, F)
@@ -262,7 +263,7 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline.factors_pinv(tg_quad)
+        factors_pinv = bspline.pinv(tg_quad)
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         core = fit(factors_pinv, F)
 
@@ -286,7 +287,7 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline_result.factors_pinv(tg_quad)
+        factors_pinv = bspline_result.pinv(tg_quad)
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         f_core = fit(factors_pinv, F)  # and compute the tucker tensor format of the fit
 
@@ -296,7 +297,7 @@ class TestTPELMFit(JaxTestCase):
         tg_quad = TensorGrid(*nodes, weights=weights)
         tg_basis = TensorGrid(t1, t2)
         bspline = BSpline(tg_basis, degree=3)  # Then fit a new B-spline to the tucker format
-        factors_pinv = bspline.factors_pinv(tg_quad)
+        factors_pinv = bspline.pinv(tg_quad)
         f_factors = bspline_result.factors(tg_quad)
         F = TuckerTensor(f_core, f_factors)
         
@@ -314,3 +315,34 @@ class TestTPELMFit(JaxTestCase):
         self.assertEqual(f_true.shape, (20, 20, 2))
         self.assertIsclose(f_approx, f_true, atol=1e-3)
     
+    def test_007_fit_poly_function(self):
+        f = lambda x: jnp.prod(x ** 3) + x[0] * x[1] - x[0] ** 2 - 1
+        t1 = jnp.linspace(-1, 1, 10)
+        t2 = jnp.linspace(-1, 1, 11)
+        tg_basis = TensorGrid(t1, t2)
+        bspline = BSpline(tg_basis, degree=3)
+
+        tg_quad = tg_basis.to_gauss(3)
+        inv_factors = bspline.pinv(tg_quad)
+        core = fit(inv_factors, f, tg_quad)
+
+        t1 = jnp.linspace(-1, 1, 20)
+        t2 = jnp.linspace(-1, 1, 20)
+        tg_val = TensorGrid(t1, t2)
+        f_approx = bspline(tg_val, core)
+        f_true = jnp.apply_along_axis(f, -1, tg_val.grid)
+
+        self.assertIsclose(f_approx, f_true, atol=1e-5)
+    
+    def test_008_fit_fails_with_type_error(self):
+        f = lambda x: jnp.prod(x ** 3) + x[0] * x[1] - x[0] ** 2 - 1
+        t1 = jnp.linspace(-1, 1, 10)
+        t2 = jnp.linspace(-1, 1, 11)
+        tg_basis = TensorGrid(t1, t2)
+        bspline = BSpline(tg_basis, degree=3)
+
+        tg_quad = tg_basis.to_gauss(3)
+        inv_factors = bspline.pinv(tg_quad)
+        F = jnp.apply_along_axis(f, -1, tg_quad.grid)
+        with self.assertRaises(TypeError):
+            fit(inv_factors, F, tg_quad)

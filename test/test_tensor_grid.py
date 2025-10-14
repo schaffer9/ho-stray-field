@@ -54,12 +54,14 @@ class TestTensorGrid(JaxTestCase):
         self.assertPytreeEqual(tg.weights[0], jnp.ones((100,)))
         self.assertPytreeEqual(tg.weights[1], jnp.ones((50,)))
 
-    def test_005_fit(self):
+    def test_005_from_gauss(self):
         t = (
-            jnp.linspace(0, 1, 100),
-            jnp.linspace(0, 2, 50),
+            jnp.linspace(0, 1, 101),
+            jnp.linspace(0, 2, 51),
         )
-        tg = TensorGrid(*t)
+        tg = TensorGrid.from_gauss(*t, degree=3)
+        self.assertIsclose(jnp.sum(tg.weights[0]), 1.0)
+        self.assertIsclose(jnp.sum(tg.weights[1]), 2.0)
+        self.assertEqual(tg[0].shape, (100 * 3,))
+        self.assertEqual(tg[1].shape, (50 * 3,))
 
-        self.assertPytreeEqual(tg.weights[0], jnp.ones((100,)))
-        self.assertPytreeEqual(tg.weights[1], jnp.ones((50,)))

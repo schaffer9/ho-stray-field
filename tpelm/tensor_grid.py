@@ -1,8 +1,10 @@
+from typing import Sequence, Self
 from dataclasses import dataclass
 
 from jax.tree_util import register_pytree_node_class
 
 from . import *
+from .integrate import gauss
 
 
 @register_pytree_node_class
@@ -21,6 +23,18 @@ class TensorGrid:
             self.weights = tuple(w for w in weights)
         else:
             self.weights = tuple(jnp.ones_like(kv) for kv in self.tensor_grid)
+
+    @classmethod
+    def from_gauss(cls, *knots, degree: int | tuple[int, ...] = 3):
+        dim = len(knots)
+        if not isinstance(degree, Sequence):
+            degree = tuple(degree for _ in range(dim))
+
+        weights, nodes = zip(*(gauss(d)(kv) for d, kv in zip(degree, knots)))
+        return cls(*nodes, weights=weights)
+
+    def to_gauss(self, degree: int | tuple[int, ...]) -> Self:
+        return self.__class__.from_gauss(*self.tensor_grid, degree=degree)
 
     def __getitem__(self, index):
         return self.tensor_grid[index]

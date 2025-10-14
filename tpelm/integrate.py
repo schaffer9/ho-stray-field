@@ -33,4 +33,10 @@ def sinc_quad(n, c0):
     w = 2 * h * jnp.cosh(j * h)
     w = w.at[0].set(h)
     return w, x
-    
+
+
+def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9):
+    omega, alpha = sinc_quad(rank, c0)
+    alpha = alpha ** 2
+    omega = 1 / jnp.sqrt(jnp.pi) * omega
+    return omega, alpha
