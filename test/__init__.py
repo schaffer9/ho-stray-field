@@ -5,6 +5,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 from jax import random
+from jax import tree
 
 
 

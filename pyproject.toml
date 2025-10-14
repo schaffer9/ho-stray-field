@@ -14,7 +14,6 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-cov",
-    "tensorly",
 ]
 
 [build-system]

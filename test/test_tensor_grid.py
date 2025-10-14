@@ -9,6 +9,7 @@ class TestTensorGrid(JaxTestCase):
         t = random.uniform(k, (2, 100), minval=-1.0, maxval=1.0)
         tg = TensorGrid(*t)
 
+        self.assertEqual(tg.dim, 2)
         self.assertPytreeEqual(tg[0], t[0])
         self.assertPytreeEqual(tg[1], t[1])
         self.assertPytreeEqual(tg.bounds[0], tuple(jnp.min(t, axis=1)))

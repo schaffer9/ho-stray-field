@@ -2,14 +2,11 @@ from typing import Callable, Sequence
 import dataclasses
 
 from jax.tree_util import register_dataclass
-import tensorly as tl
 
 from . import *
 from .tensor_grid import TensorGrid
+from .tucker_tensor import Core, Factors, TuckerTensor
 
-
-Factors = tuple[jax.Array, ...]
-Core = jax.Array
 
 
 def _base_fun(x: jax.Array, k: int, i: int, t: jax.Array, degree: int, extrapolate: bool) -> jax.Array:
@@ -105,23 +102,19 @@ class BSpline:
     grid: TensorGrid
     degree: int = 3
 
-    # def __call__(self, x: jax.Array, core_tensor: jax.Array) -> jax.Array:
-    #     def _eval_elm(x):
-    #         basis1d = self.basis(x)
-    #         result = core_tensor
-    #         for b in basis1d:
-    #             result = jnp.tensordot(result, b, ((0, -1)))
-    #         return result
-
-    #     if x.ndim == 1:
-    #         return _eval_elm(x)
-    #     else:
-    #         return jax.vmap(_eval_elm)(x)
+    def __call__(self, tg: TensorGrid, core_tensor: Core) -> jax.Array:
+        factors = self.factors(tg)
+        tucker_tensor = TuckerTensor(core_tensor, factors)
+        return tucker_tensor.to_tensor()
         
     def factors(self, tg: TensorGrid) -> Factors:
-        basis1d = tuple(basis(xi, t, degree=self.degree) for xi, t in zip(tg, self.grid))
-        return basis1d
+        _basis = tuple(basis(xi, t, degree=self.degree) for xi, t in zip(tg, self.grid))
+        return _basis
     
+    def basis(self, x: jax.Array, mode: int) -> jax.Array:
+        _basis = basis(x, self.grid[mode], degree=self.degree)
+        return _basis
+
     def factors_pinv(
             self, 
             tg: TensorGrid, 
@@ -137,19 +130,40 @@ class BSpline:
         factors = self.factors(tg)
         pinv_factors = tuple(regularized_pinv(X, wi, alpha_i, tol_i) for X, wi, alpha_i, tol_i in zip(factors, tg.weights, alpha, tol))
         return pinv_factors
-  
+    
+    def factors_derivative(self, tg: TensorGrid) -> tuple[Factors, Factors]:
+        _factors, _factors_derivative = tuple(zip(
+            *(_elementwise_derivative(lambda xi: basis(xi, t, degree=self.degree), xi)
+            for xi, t in zip(tg, self.grid))
+        ))
+        return _factors, _factors_derivative
 
 
-def fit(factors_pinv: Factors, fn: jax.Array | tl.tucker_tensor.TuckerTensor):
-    ...
+def fit(factors_pinv: Factors, F: jax.Array | TuckerTensor):
+    if isinstance(F, TuckerTensor):
+        return fit_to_tucker(factors_pinv, F)
+    elif isinstance(F, jax.Array):
+        return fit_to_array(factors_pinv, F)
+    else:
+        raise NotImplementedError(f"Cannot fit TPELM to {type(F)}. Provide the right hand side as array or Tucker tensor.")
 
 
 def fit_to_array(factors_pinv: Factors, F: jax.Array) -> Core:
-    tucker_tensor = tl.tucker_tensor.TuckerTensor((F, factors_pinv))
-    return tl.tucker_tensor.tucker_to_tensor(tucker_tensor)
+    tucker_tensor = TuckerTensor(F, factors_pinv)
+    return tucker_tensor.to_tensor()
 
 
-def fit_to_tucker(factors_pinv: Factors, F: tl.tucker_tensor.TuckerTensor) -> Core:
-    factors = tuple(Xinv @ f for Xinv, f in zip(factors_pinv, F.factors))
-    tucker_tensor = tl.tucker_tensor.TuckerTensor((F.core, factors))
-    return tl.tucker_tensor.tucker_to_tensor(tucker_tensor)
+def fit_to_tucker(factors_pinv: Factors, F: TuckerTensor) -> Core:
+    core, factors = F
+    factors = tuple(Xinv @ f for Xinv, f in zip(factors_pinv, factors))
+    tucker_tensor = TuckerTensor(core, factors)
+    return tucker_tensor.to_tensor()
+
+
+def _elementwise_derivative(f, x):
+    def _f(x):
+        y = f(x)
+        return y, y
+    
+    df, y = jax.vmap(jax.jacfwd(_f, has_aux=True))(x)
+    return y, df
