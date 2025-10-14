@@ -1,6 +1,7 @@
-from tpelm.gs import GS, superpotential_factors, integrate_gs_term, integrate_r2_gs_term
+from tpelm.gs import GS, superpotential_factors, integrate_gs_term, integrate_r2_gs_term, sinc_quad_1_over_sqrtx, fit_superpotential
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
+from tpelm.integrate import gauss
 
 from . import *
 
@@ -66,3 +67,22 @@ class TestSuperpotential(JaxTestCase):
         factor_shapes = (((4, 10, 6), (4, 12, 7), (4, 14, 8)), ((4, 10, 6), (4, 12, 7), (4, 14, 8)), ((4, 10, 6), (4, 12, 7), (4, 14, 8)))
         self.assertEqual(tree.map(lambda t: t.shape, factors), factor_shapes)
         self.assertTrue(info.err < 1e-13)
+
+    # def test_001_fit_superpotential(self):
+    #     t1 = jnp.linspace(-0.5, 0.5, 4)
+    #     t2 = jnp.linspace(-0.5, 0.5, 5)
+    #     t3 = jnp.linspace(-0.5, 0.5, 6)
+    #     tg_spline = TensorGrid(t1, t2, t3)
+    #     bspline = BSpline(tg_spline, degree=3)
+    #     gs = sinc_quad_1_over_sqrtx(10)
+        
+    #     weights, nodes = zip(gauss(3)(t1), gauss(3)(t2), gauss(3)(t3))
+    #     tg_quad = TensorGrid(*nodes, weights=weights)
+
+    #     factors_pinv = bspline.factors_pinv(tg_quad)
+    #     factors_superpot, info = superpotential_factors(bspline, tg_quad, tg_spline, gs, epsabs=1e-13, epsrel=0.0, order=31)
+    #     self.assertTrue(info.err < 1e-13)
+    #     core = fit_superpotential(factors_pinv, factors_superpot)
+    #     factors, info = superpotential_factors(bspline, tg_targets, tg_spline, gs, epsabs=1e-13, epsrel=0.0, order=31)
+    #     factor_shapes = (((4, 10, 6), (4, 12, 7), (4, 14, 8)), ((4, 10, 6), (4, 12, 7), (4, 14, 8)), ((4, 10, 6), (4, 12, 7), (4, 14, 8)))
+    #     self.assertEqual(tree.map(lambda t: t.shape, factors), factor_shapes)

@@ -4,9 +4,10 @@ from quadax import quadgk, quadcc
 from quadax.utils import QuadratureInfo
 
 from . import *
-from .bspline import BSpline
+from .bspline import BSpline, fit
 from .tensor_grid import TensorGrid
 from .integrate import sinc_quad
+from .tucker_tensor import TuckerTensor
 
 
 class GS(NamedTuple):
@@ -63,12 +64,24 @@ def superpotential_factors(
     
     I_gs, info1 = zip(*(lax.map(lambda a: _integrate(integrate_gs_term, a, mode), gs.alpha) for mode in modes))
     I_r2_gs, info2 = zip(*(lax.map(lambda a: _integrate(integrate_r2_gs_term, a, mode), gs.alpha) for mode in modes))
-
+    I_r2_gs = tree.map(lambda I: 1 / (8 * jnp.pi) * gs.omega[:, *(None for _ in I.shape[1:])] * I, I_r2_gs)
     factors = tuple(
         I_gs[:mode] + (I_r2_gs[mode],) + I_gs[mode+1:]
         for mode in modes
     )
     return factors, merge_quad_info(*info1, *info2)
+
+
+# def fit_superpotential(
+#     factors_pinv, factors_superpot, core
+# ):
+#     cores = jnp.asarray([
+#         [fit(factors_pinv, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
+#         for alpha_factors in factors_superpot
+#     ])
+#     core = jnp.sum(cores, axis=(0, 1))
+#     return core
+
 
 
 def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9):
