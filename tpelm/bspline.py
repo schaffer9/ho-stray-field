@@ -94,7 +94,7 @@ def regularized_pinv(X: jax.Array, weights: jax.Array | None = None, alpha: jax.
     return Xinv
 
 
-@partial(register_dataclass, 
+@partial(register_dataclass,
          data_fields=["grid"],
          meta_fields=["degree"])
 @dataclasses.dataclass

@@ -253,4 +253,64 @@ class TestTPELMFit(JaxTestCase):
         with self.assertRaises(NotImplementedError):
             fit(factors_pinv, F)
 
+    def test_005_fit_multivariate_function(self):
+        f = lambda x: jnp.sin(x)
+        t1 = jnp.linspace(-1, 1, 10)
+        t2 = jnp.linspace(-1, 1, 11)
+        tg_basis = TensorGrid(t1, t2)
+        bspline = BSpline(tg_basis, degree=3)
+
+        weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
+        tg_quad = TensorGrid(*nodes, weights=weights)
+        factors_pinv = bspline.factors_pinv(tg_quad)
+        F = jnp.apply_along_axis(f, -1, tg_quad.grid)
+        core = fit(factors_pinv, F)
+
+        t1 = jnp.linspace(-1, 1, 20)
+        t2 = jnp.linspace(-1, 1, 20)
+        tg_val = TensorGrid(t1, t2)
+        factors = bspline.factors(tg_val)
+        f_approx = jnp.einsum("abd,ia,jb->ijd", core, *factors)
+        f_true = jnp.apply_along_axis(f, -1, tg_val.grid)
+
+        self.assertEqual(f_approx.shape, (20, 20, 2))
+        self.assertEqual(f_true.shape, (20, 20, 2))
+        self.assertIsclose(f_approx, f_true, atol=1e-3)
+
+    def test_006_fit_multivariate_function_from_tucker(self):
+        f = lambda x: jnp.sin(x)  # define the function
+        t1 = jnp.linspace(-1, 1, 5)
+        t2 = jnp.linspace(-1, 1, 6)
+        tg_basis = TensorGrid(t1, t2)
+        bspline_result = BSpline(tg_basis, degree=3)  # then fit a B-spline to the function 
+
+        weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
+        tg_quad = TensorGrid(*nodes, weights=weights)
+        factors_pinv = bspline_result.factors_pinv(tg_quad)
+        F = jnp.apply_along_axis(f, -1, tg_quad.grid)
+        f_core = fit(factors_pinv, F)  # and compute the tucker tensor format of the fit
+
+        t1 = jnp.linspace(-1, 1, 7)
+        t2 = jnp.linspace(-1, 1, 8)
+        weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
+        tg_quad = TensorGrid(*nodes, weights=weights)
+        tg_basis = TensorGrid(t1, t2)
+        bspline = BSpline(tg_basis, degree=3)  # Then fit a new B-spline to the tucker format
+        factors_pinv = bspline.factors_pinv(tg_quad)
+        f_factors = bspline_result.factors(tg_quad)
+        F = TuckerTensor(f_core, f_factors)
+        
+        core = jax.jit(fit)(factors_pinv, F)  # by using fit_to_tucker
+        
+        self.assertEqual(core.shape, (9, 10, 2))  # and check the result
+        
+        t1 = jnp.linspace(-1, 1, 20)
+        t2 = jnp.linspace(-1, 1, 20)
+        tg_val = TensorGrid(t1, t2)
+        f_approx = bspline(tg_val, core)
+        f_true = jnp.apply_along_axis(f, -1, tg_val.grid)
+
+        self.assertEqual(f_approx.shape, (20, 20, 2))
+        self.assertEqual(f_true.shape, (20, 20, 2))
+        self.assertIsclose(f_approx, f_true, atol=1e-3)
     

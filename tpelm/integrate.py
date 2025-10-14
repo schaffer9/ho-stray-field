@@ -24,3 +24,13 @@ def gauss(degree: int) -> QuadRule:
         return w, n
 
     return quad
+
+
+def sinc_quad(n, c0):
+    h = c0 * jnp.log(n) / n
+    j = jnp.arange(n)
+    x = jnp.sinh(j * h)
+    w = 2 * h * jnp.cosh(j * h)
+    w = w.at[0].set(h)
+    return w, x
+    
