@@ -1,6 +1,6 @@
 
-from tpelm.tpelm import fit, regularized_pinv
-from tpelm.bspline import basis, eval_spline, BSpline  # , fit, regularized_pinv
+from tpelm.tpelm import fit, regularized_pinv, fit_divergence, fit_laplace, fit_grad
+from tpelm.bspline import basis, eval_spline, BSpline
 from tpelm.tensor_grid import TensorGrid
 from tpelm.tucker_tensor import TuckerTensor
 from tpelm.integrate import gauss
@@ -144,9 +144,9 @@ class TestBSpline(JaxTestCase):
         t2 = jnp.linspace(-0.5, 0.5, 15)
         tg2 = TensorGrid(t1, t2)
         factors_true = bspline.factors(tg2)
-        factors, d_factors = bspline.factors_derivative(tg2)
-        self.assertEqual(d_factors[0].shape, (10, 5))
-        self.assertEqual(d_factors[1].shape, (15, 6))
+        factors, d_factors = bspline.factors_and_partials(tg2)
+        self.assertEqual(tree.map(lambda t: t.shape, d_factors), 
+                         (((10, 5), (15, 6)), ((10, 5), (15, 6))))
 
         def basis1(x):
             return basis(x, t1_spline, degree=3)
@@ -154,9 +154,10 @@ class TestBSpline(JaxTestCase):
         def basis2(x):
             return basis(x, t2_spline, degree=3)
 
+        f1, f2 = factors
         b1 = jax.vmap(jax.jacfwd(basis1))(t1)
         b2 = jax.vmap(jax.jacfwd(basis2))(t2)
-        self.assertPytreeEqual(d_factors, (b1, b2))
+        self.assertPytreeEqual(d_factors, ((b1, f2), (f1, b2)))
         self.assertPytreeEqual(factors, factors_true)
 
 
@@ -346,3 +347,124 @@ class TestTPELMFit(JaxTestCase):
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         with self.assertRaises(TypeError):
             fit(inv_factors, F, tg_quad)
+
+
+def _divergence(f):
+    def div_f(*args, **kwargs):
+        Jf = jax.jacfwd(f)(*args, **kwargs)
+
+        def _compute_div(Jf):
+            return jnp.sum(jnp.diag(Jf))
+
+        return tree.map(_compute_div, Jf)
+
+    return div_f
+
+
+def hvp(f, primals, tangents):
+    return jax.jvp(jax.jacfwd(f), primals, tangents)[1]
+
+
+def hessian_diag(f, primals):
+    primals = jnp.asarray(primals)
+    vs = jnp.eye(primals.shape[0])
+
+    def comp(v):
+        return tree.map(lambda a: a @ v, hvp(f, [primals], [v]))
+
+    diag_entries = jax.vmap(comp)(vs)
+    return diag_entries
+
+
+def laplace(f):
+    def lap(x, *args, **kwargs):
+        H_diag = hessian_diag(lambda x: f(x, *args, **kwargs), x)
+        return tree.map(lambda d: jnp.sum(d, axis=0), H_diag)
+
+    return lap
+
+
+class TestDivergence(JaxTestCase):
+    @classmethod
+    def setUpClass(cls):
+        jax.config.update("jax_enable_x64", True)
+
+    @classmethod
+    def tearDownClass(cls):
+        jax.config.update("jax_enable_x64", False)
+
+    def test_000_divergence(self):
+        f = lambda x: jnp.array([jnp.prod(jnp.sin(x)), jnp.prod(jnp.cos(x))])
+        t1 = jnp.linspace(-jnp.pi, jnp.pi, 60)
+        t2 = jnp.linspace(-jnp.pi, jnp.pi, 60)
+        tg_basis = TensorGrid(t1, t2)
+        bspline = BSpline(tg_basis, degree=5)
+
+        tg_quad = tg_basis.to_gauss(4)
+        inv_factors = bspline.pinv(tg_quad)
+        core = fit(inv_factors, f, tg_quad)
+
+        div_f = _divergence(f)
+        div_F_true = jnp.apply_along_axis(div_f, -1, tg_quad.grid)
+
+        factors, partials = bspline.factors_and_partials(tg_quad)
+        core_div = fit_divergence(inv_factors, partials, core)
+        div_F_pred = TuckerTensor(core_div, factors).to_tensor()
+        self.assertIsclose(div_F_pred, div_F_true, atol=1e-7, rtol=0.0)
+
+class TestLaplace(JaxTestCase):
+    @classmethod
+    def setUpClass(cls):
+        jax.config.update("jax_enable_x64", True)
+
+    @classmethod
+    def tearDownClass(cls):
+        jax.config.update("jax_enable_x64", False)
+
+    def test_001_laplace(self):
+        f = lambda x: jnp.prod(jnp.sin(x))
+        t1 = jnp.linspace(-jnp.pi, jnp.pi, 70)
+        t2 = jnp.linspace(-jnp.pi, jnp.pi, 70)
+        tg_basis = TensorGrid(t1, t2)
+        bspline = BSpline(tg_basis, degree=6)
+
+        tg_quad = tg_basis.to_gauss(4)
+        inv_factors = bspline.pinv(tg_quad)
+        core = fit(inv_factors, f, tg_quad)
+
+        lap_f = laplace(f)
+        lap_F_true = jnp.apply_along_axis(lap_f, -1, tg_quad.grid)
+
+        factors, partials = bspline.factors_and_partials(tg_quad)
+        core_div = fit_laplace(inv_factors, partials, core)
+        lap_F_pred = TuckerTensor(core_div, factors).to_tensor()
+        self.assertIsclose(lap_F_pred, lap_F_true, atol=1e-7, rtol=0.0)
+
+
+class TestGrad(JaxTestCase):
+    @classmethod
+    def setUpClass(cls):
+        jax.config.update("jax_enable_x64", True)
+
+    @classmethod
+    def tearDownClass(cls):
+        jax.config.update("jax_enable_x64", False)
+
+    def test_001_laplace(self):
+        f = lambda x: jnp.prod(jnp.sin(x))
+        t1 = jnp.linspace(-jnp.pi, jnp.pi, 70)
+        t2 = jnp.linspace(-jnp.pi, jnp.pi, 70)
+        tg_basis = TensorGrid(t1, t2)
+        bspline = BSpline(tg_basis, degree=6)
+
+        tg_quad = tg_basis.to_gauss(4)
+        inv_factors = bspline.pinv(tg_quad)
+        core = fit(inv_factors, f, tg_quad)
+
+        grad_f = jax.jacfwd(f)
+        grad_F_true = jnp.apply_along_axis(grad_f, -1, tg_quad.grid)
+
+        factors, partials = bspline.factors_and_partials(tg_quad)
+        core_div = fit_grad(inv_factors, partials, core)
+        grad_F_pred = TuckerTensor(core_div, factors).to_tensor()
+        self.assertIsclose(grad_F_pred, grad_F_true, atol=1e-7, rtol=0.0)

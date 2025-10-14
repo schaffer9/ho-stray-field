@@ -7,13 +7,17 @@ from . import *
 from .tpelm import fit
 from .bspline import BSpline
 from .tensor_grid import TensorGrid
-from .integrate import sinc_quad
+from .integrate import sinc_quad_1_over_sqrtx
 from .tucker_tensor import TuckerTensor
 
 
 class GS(NamedTuple):
     omega: jax.Array
     alpha: jax.Array
+
+    @classmethod
+    def from_sinc_1_over_sqrtx(cls, rank: int, c0: float = 1.9):
+        return cls(*sinc_quad_1_over_sqrtx(rank, c0))
 
 
 def _quad(g, x, interval, alpha, stds: int = 9, **kwargs):

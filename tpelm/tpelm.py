@@ -44,13 +44,18 @@ class TPELM(abc.ABC):
         pinv_factors = tuple(regularized_pinv(X, wi, alpha_i, tol_i) for X, wi, alpha_i, tol_i in zip(factors, tg.weights, alpha, tol))
         return pinv_factors
     
-    def factors_derivative(self, tg: TensorGrid) -> tuple[Factors, Factors]:
+    def factors_and_partials(self, tg: TensorGrid) -> tuple[Factors, tuple[Factors, ...]]:
         modes = list(range(self.rank))
         _factors, _factors_derivative = tuple(zip(
             *(_elementwise_derivative(lambda x: self.basis(x, m), xi)
             for xi, m in zip(tg, modes))
         ))
-        return _factors, _factors_derivative
+        def _partial(i):
+            f = _factors[:i] + (_factors_derivative[i],) + _factors[i+1:]
+            return f
+
+        partials = tuple(_partial(i) for i in range(self.rank))
+        return _factors, partials
 
 
 @overload
@@ -110,6 +115,56 @@ def regularized_pinv(X: jax.Array, weights: jax.Array | None = None, alpha: jax.
     
     X = weights[:, None] * X
     U, S, VT = jnp.linalg.svd(X, full_matrices=False)
-    Sinv = jnp.where((S ** 2 + alpha) < tol, 0.0, S / (S ** 2 + alpha))
+    Sinv = lax.cond(
+        alpha == 0.0,
+        lambda: jnp.where(S < tol, 0.0, 1 / S),
+        lambda: jnp.where((S ** 2 + alpha) < tol, 0.0, S / (S ** 2 + alpha))
+    )
     Xinv = (VT.T * Sinv) @ (weights[:, None] * U).T  # compute pseudoinverse
     return Xinv
+
+
+def fit_divergence(inv_factors: Factors, partials: tuple[Factors, ...], core: Core) -> Core:
+    _check_divergence_dim(partials, core)
+
+    _partials = tuple(
+        TuckerTensor(core[..., i], f)
+        for i, f in enumerate(partials)
+    )
+    core = jnp.sum(jnp.asarray([
+        fit(inv_factors, dtt)
+        for dtt in _partials
+    ]), axis=0)
+    return core
+
+
+def fit_laplace(inv_factors: Factors, partials: tuple[Factors, ...], core: Core) -> Core:
+    _partials = tuple(
+        TuckerTensor(core, f)
+        for f in partials
+    )
+    d_cores = tuple(fit(inv_factors, p) for p in _partials)
+    
+    _partials2 = tuple(
+        TuckerTensor(c, f)
+        for c, f in zip(d_cores, partials)
+    )
+    dd_cores = tuple(fit(inv_factors, p) for p in _partials2)
+    core = jnp.sum(jnp.asarray(dd_cores), axis=0)
+    return core
+
+
+def fit_grad(inv_factors: Factors, partials: tuple[Factors, ...], core: Core) -> Core:
+    _partials = tuple(
+        TuckerTensor(core, f)
+        for f in partials
+    )
+    d_cores = tuple(fit(inv_factors, p) for p in _partials)
+    return jnp.stack(d_cores, axis=-1)
+    
+
+def _check_divergence_dim(partials: tuple[Factors, ...], core: Core) -> None:
+    dims = len(partials)
+    assert core.ndim == (dims + 1)
+    assert core.shape[-1] == dims
+
