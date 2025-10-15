@@ -1,11 +1,17 @@
 from tpelm.gs import GS, superpotential_factors, integrate_gs_term, integrate_r2_gs_term, fit_superpotential
-from tpelm.tpelm import fit
+from tpelm.functional_tucker import fit
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
 from tpelm.integrate import gauss, sinc_quad_1_over_sqrtx
 
 from . import *
 from .sources import flower_state
+
+
+def test_gs_from_sinc():
+    gs = GS.from_sinc_1_over_sqrtx(100, 2.0)
+    assert gs.omega.shape == (100,)
+    assert gs.alpha.shape == (100,)
 
 
 class TestIntegrateGS(JaxTestCase):

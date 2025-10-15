@@ -25,5 +25,8 @@ packages = ["tpelm"]
 
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules --cov=tpelm --cov-report=term-missing -ra -q"
+addopts = '--doctest-modules --cov=tpelm --cov-report=term-missing -ra -q -m "not functional"'
 testpaths = ["test", "tpelm"]
+markers = [
+    "functional: marks tests as functional (long-running or output-generating)",
+]

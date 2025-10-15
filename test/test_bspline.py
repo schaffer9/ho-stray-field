@@ -1,5 +1,5 @@
 
-from tpelm.tpelm import fit, regularized_pinv, fit_divergence, fit_laplace, fit_grad
+from tpelm.functional_tucker import fit, regularized_pinv, fit_divergence, fit_laplace, fit_grad
 from tpelm.bspline import basis, eval_spline, BSpline
 from tpelm.tensor_grid import TensorGrid
 from tpelm.tucker_tensor import TuckerTensor
@@ -347,6 +347,9 @@ class TestTPELMFit(JaxTestCase):
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         with self.assertRaises(TypeError):
             fit(inv_factors, F, tg_quad)
+
+    def test_009_fit_func_tucker(self):
+        pass
 
 
 def _divergence(f):

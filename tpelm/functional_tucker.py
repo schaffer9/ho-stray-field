@@ -9,10 +9,10 @@ from .tucker_tensor import TuckerTensor, Factors, Core
 from .tensor_grid import TensorGrid
 
 
-class TPELM(abc.ABC):
+class FunctionalTucker(abc.ABC):
     @property
     @abc.abstractmethod
-    def rank(self) -> int:
+    def dimension(self) -> int:
         ...
 
     @abc.abstractmethod
@@ -25,7 +25,7 @@ class TPELM(abc.ABC):
         return tucker_tensor.to_tensor()
     
     def factors(self, tg: TensorGrid) -> Factors:
-        modes = list(range(self.rank))
+        modes = list(range(self.dimension))
         return tuple(self.basis(x, m) for x, m in zip(tg, modes))
 
     def pinv(
@@ -45,7 +45,7 @@ class TPELM(abc.ABC):
         return pinv_factors
     
     def factors_and_partials(self, tg: TensorGrid) -> tuple[Factors, tuple[Factors, ...]]:
-        modes = list(range(self.rank))
+        modes = list(range(self.dimension))
         _factors, _factors_derivative = tuple(zip(
             *(_elementwise_derivative(lambda x: self.basis(x, m), xi)
             for xi, m in zip(tg, modes))
@@ -54,7 +54,7 @@ class TPELM(abc.ABC):
             f = _factors[:i] + (_factors_derivative[i],) + _factors[i+1:]
             return f
 
-        partials = tuple(_partial(i) for i in range(self.rank))
+        partials = tuple(_partial(i) for i in range(self.dimension))
         return _factors, partials
 
 
@@ -68,6 +68,14 @@ def fit(inv_factors: Factors, F: TuckerTensor) -> Core: ...
 
 @overload
 def fit(inv_factors: Factors, F: Callable, tg: TensorGrid) -> Core: ...
+
+
+# @overload
+# def fit(func_tucker: FunctionalTucker, F: Callable, tg: TensorGrid) -> Core: ...
+
+
+# @overload
+# def fit(func_tucker: FunctionalTucker, F: FunctionalTucker, core: Core, tg: TensorGrid) -> Core: ...
 
 
 def fit(

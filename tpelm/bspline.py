@@ -4,7 +4,7 @@ import dataclasses
 from jax.tree_util import register_dataclass
 
 from . import *
-from .tpelm import TPELM
+from .functional_tucker import FunctionalTucker
 from .tensor_grid import TensorGrid
 from .tucker_tensor import Core, Factors, TuckerTensor
 
@@ -88,12 +88,12 @@ def basis(x: jax.Array, grid: jax.Array, degree: int = 3, open_spline: bool = Fa
          data_fields=["grid"],
          meta_fields=["degree"])
 @dataclasses.dataclass
-class BSpline(TPELM):
+class BSpline(FunctionalTucker):
     grid: TensorGrid
     degree: int = 3
 
     @property
-    def rank(self) -> int:
+    def dimension(self) -> int:
         return self.grid.dim
     
     def basis(self, x: jax.Array, mode: int) -> jax.Array:

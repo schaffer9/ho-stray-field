@@ -4,7 +4,7 @@ from quadax import quadgk
 from quadax.utils import QuadratureInfo
 
 from . import *
-from .tpelm import fit
+from .functional_tucker import fit
 from .bspline import BSpline
 from .tensor_grid import TensorGrid
 from .integrate import sinc_quad_1_over_sqrtx
