@@ -1,4 +1,3 @@
-from typing import Callable, Sequence
 import dataclasses
 
 from jax.tree_util import register_dataclass
@@ -6,40 +5,6 @@ from jax.tree_util import register_dataclass
 from . import *
 from .functional_tucker import FunctionalTucker
 from .tensor_grid import TensorGrid
-from .tucker_tensor import Core, Factors, TuckerTensor
-
-
-
-def _base_fun(x: jax.Array, k: int, i: int, t: jax.Array, degree: int, extrapolate: bool) -> jax.Array:
-    if k == 0:
-        n = len(t) - k - 1
-        a1 = jnp.where((t[..., i] <= x) & (x < t[..., i + 1]), 1.0, 0.0)
-        if extrapolate:
-            # a2 and a3 for extrapolation
-            a2 = jnp.where((x < t[..., 0]) & (i <= degree), 1.0, 0.0)
-            a3 = jnp.where((x >= t[..., -1]) & (i >= n - degree - 1), 1.0, 0.0)
-            return a1 + a2 + a3
-        else:
-            return a1
-
-    clamped_nodes = t[..., i + k] == t[..., i]
-    c1: jax.Array = jnp.where(
-        clamped_nodes,
-        0.0,
-        (x - t[..., i])
-        / jnp.where(clamped_nodes, jnp.inf, (t[..., i + k] - t[..., i]))
-        * _base_fun(x, k - 1, i, t, degree, extrapolate),
-    )
-    clamped_nodes = t[..., i + k + 1] == t[..., i + 1]
-    c2: jax.Array = jnp.where(
-        t[..., i + k + 1] == t[..., i + 1],
-        0.0,
-        (t[..., i + k + 1] - x)
-        / jnp.where(clamped_nodes, jnp.inf, (t[..., i + k + 1] - t[..., i + 1]))
-        * _base_fun(x, k - 1, i + 1, t, degree, extrapolate),
-    )
-
-    return c1 + c2
 
 
 @partial(jax.jit, static_argnames=("degree", "open_spline"))
@@ -55,33 +20,68 @@ def eval_spline(x: jax.Array, grid: jax.Array, coefs: jax.Array, degree: int = 3
     return jnp.sum(y * coefs, axis=-1)
 
 
+def _bspline_basis_deboor(x, t, degree, open_spline):
+    assert t.ndim == 1, "`grid` must be a ordered 1d array"
+    
+    t = jnp.concatenate([jnp.repeat(t[0], degree), t, jnp.repeat(t[-1], degree)])
+    # Number of basis functions
+    n = len(t) - degree - 1
+    assert n > 0, f"`grid` not large enough for degree {degree}"
+
+    # Find knot span index k such that t[k] <= x < t[k+1]
+    k = jnp.searchsorted(t, x, side="right") - 1
+    k = jnp.where(x == t[-1], n - 1, k)
+    if open_spline:
+        jax.debug.print("{k} {n}", k=k, n=n)
+        b = jnp.where((k < degree) | (k > n - 1), 0.0, 1.0)
+    else:
+        b = jnp.array([1.0])
+    k = jnp.clip(k, degree, n - 1)
+    
+    for p in range(1, degree + 1):
+        # _b = jnp.zeros((p + 1))
+        i = k - p + 1
+        t1 = lax.dynamic_slice(t, i, p)
+        t2 = lax.dynamic_slice(t, i + p, p)
+        denom = (t2 - t1)
+        a1 = jnp.where(
+            denom != 0, 
+            (x - t1) / jnp.where(denom == 0, 1.0, denom),
+            0.0
+        ) * b
+        # b1 = _b.at[1:].set(a1)
+        i = k - p + 1
+        t1 = lax.dynamic_slice(t, i + p, p)
+        t2 = lax.dynamic_slice(t, i, p)
+        denom = (t1 - t2)
+        a2 = jnp.where(
+            denom != 0, 
+            (t1 - x) / jnp.where(denom == 0, 1.0, denom),
+            0.0
+        ) * b
+        # b2 = _b.at[:-1].set(a2)
+        # b = b1 + b2
+        b = jnp.concatenate([a2[0][None], a1[:-1] + a2[1:], a1[-1][None]])
+ 
+    basis = jnp.zeros((n,))
+    basis = lax.dynamic_update_slice(basis, b, k - degree)
+    
+    return basis
+
 @partial(jax.jit, static_argnames=("degree", "open_spline"))
 def basis(x: jax.Array, grid: jax.Array, degree: int = 3, open_spline: bool = False) -> jax.Array:
-    """Computes the spine basis with respect to the provided grid.
-
-    Parameters
-    ----------
-    x : jax.Array
-    grid : jax.Array
-        spline grid; if multidimensional, this will evaluate the spline for each dimension
-        and the output can be seen as a compressed tensor.
-    degree : int, optional
-        spline degree
-
-    Returns
-    -------
-    jax.Array
-    """
-    if not open_spline:
-        g0 = grid[..., 0:1]
-        g1 = grid[..., -1:]
-        grid = jnp.concatenate([jnp.repeat(g0, degree, axis=-1), grid, jnp.repeat(g1, degree, axis=-1)], axis=-1)
-        extrapolate = True
+    def _basis(x, grid):
+        return _bspline_basis_deboor(x, grid, degree, open_spline)
+    
+    b = jnp.apply_along_axis(lambda x: _basis(x, grid), -1, x[..., None])
+    
+    if open_spline:
+        if degree == 0:
+            return b
+        else:
+            return b[..., degree:-degree]
     else:
-        extrapolate = False
-
-    n = grid.shape[-1] - degree - 1
-    return jax.vmap(lambda i: _base_fun(x, degree, i, grid, degree, extrapolate), 0, -1)(jnp.arange(n))
+        return b
 
 
 @partial(register_dataclass,

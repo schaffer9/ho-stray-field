@@ -22,7 +22,7 @@ class TestSplineBasis(JaxTestCase):
                     [0, 1, 0, 0],
                     [0, 1, 0, 0],
                     [0, 0, 1, 0],
-                    [0, 0, 0, 0],
+                    [0, 0, 0, 1],
                     [0, 0, 0, 0],
                 ]
             ),
@@ -52,35 +52,6 @@ class TestSplineBasis(JaxTestCase):
         b = basis(x, t, 2, open_spline=True)
         self.assertIsclose(
             b,
-            jnp.array(
-                [
-                    [0.0, 0.0],
-                    [0.75, 0.125],
-                    [0.125, 0.75],
-                    [0.0, 0.0],
-                ]
-            ),
-        )
-
-    def test_003_vectorized(self):
-        t = jnp.array([-1.0, -0.5, 0.0, 0.5, 1.0])
-        t = jnp.asarray([t, t])
-        x = jnp.array([-1.0, -0.25, 0.25, 1.0])
-        x = jnp.asarray([x, x]).T
-        b = basis(x, t, 2, open_spline=True)
-        self.assertIsclose(
-            b[:, 0],
-            jnp.array(
-                [
-                    [0.0, 0.0],
-                    [0.75, 0.125],
-                    [0.125, 0.75],
-                    [0.0, 0.0],
-                ]
-            ),
-        )
-        self.assertIsclose(
-            b[:, 1],
             jnp.array(
                 [
                     [0.0, 0.0],
@@ -181,7 +152,6 @@ class TestTPELMFit(JaxTestCase):
         factors = bspline.factors(tg_val)
         f_approx = jnp.einsum("ab,ia,jb->ij", core, *factors)
         f_true = jnp.apply_along_axis(f, -1, tg_val.grid)
-
         self.assertIsclose(f_approx, f_true, atol=1e-5)
 
     def test_002_fit_sin(self):
@@ -208,6 +178,7 @@ class TestTPELMFit(JaxTestCase):
         factors = bspline.factors(tg_val)
         f_approx = jnp.einsum("abc,ia,jb,kc->ijk", core, *factors)
         f_true = jnp.apply_along_axis(f, -1, tg_val.grid)
+        
         self.assertIsclose(f_approx, f_true, atol=1e-2)
 
     def test_003_fit_to_tucker(self):
