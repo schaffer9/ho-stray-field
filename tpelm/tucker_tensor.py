@@ -1,4 +1,4 @@
-from typing import NamedTuple, TypeAlias
+from typing import NamedTuple, TypeAlias, Self
 import string
 
 from . import *
@@ -12,11 +12,10 @@ class TuckerTensor(NamedTuple):
     factors: Factors
 
     def to_tensor(self) -> jax.Array:
-        # Number of modes
+        letters = string.ascii_lowercase
         n_modes = len(self.factors)
 
         # Start index letters for einsum subscripts (use ASCII letters)
-        letters = string.ascii_lowercase
         core_dim = len(self.core.shape)
         extra_dims = core_dim - n_modes  # for multivariate output
         core_subs = letters[:n_modes + extra_dims]              # indices for core
@@ -29,3 +28,35 @@ class TuckerTensor(NamedTuple):
         einsum_str += "->" + result_subs
         # Evaluate einsum
         return jnp.einsum(einsum_str, self.core, *self.factors)
+
+    def dot(self, B: Self) -> jax.Array:
+        return tucker_dot(self, B)
+    
+
+def tucker_dot(A: TuckerTensor, B: TuckerTensor) -> jax.Array:
+    
+    letters = string.ascii_lowercase
+    n_modes = len(A.factors)
+
+    # Start index letters for einsum subscripts (use ASCII letters)
+    core_dim1 = len(A.core.shape)
+    core_dim2 = len(B.core.shape)
+    
+    extra_dims1 = core_dim1 - n_modes
+    extra_dims2 = core_dim2 - n_modes
+    
+    core_subs1 = letters[:n_modes] + letters[2 * n_modes:2 * n_modes + extra_dims1]
+    core_subs2 = letters[n_modes:2 * n_modes] + letters[2 * n_modes:2 * n_modes + extra_dims2]
+    
+    k = 2 * n_modes + max(extra_dims1, extra_dims2)
+    factor_subs = letters[k:k + n_modes]
+    
+    einsum_str = f"{core_subs1},{core_subs2}"
+    for i in range(n_modes):
+        einsum_str += f",{factor_subs[i]}{core_subs1[i]}"
+        
+    for i in range(n_modes):
+        einsum_str += f",{factor_subs[i]}{core_subs2[i]}"
+    
+    return jnp.einsum(einsum_str, A.core, B.core, *A.factors, *B.factors)
+

@@ -39,17 +39,15 @@ def _bspline_basis_deboor(x, t, degree, open_spline):
     k = jnp.clip(k, degree, n - 1)
     
     for p in range(1, degree + 1):
-        # _b = jnp.zeros((p + 1))
         i = k - p + 1
         t1 = lax.dynamic_slice(t, i, p)
         t2 = lax.dynamic_slice(t, i + p, p)
         denom = (t2 - t1)
         a1 = jnp.where(
-            denom != 0, 
+            denom != 0,
             (x - t1) / jnp.where(denom == 0, 1.0, denom),
             0.0
         ) * b
-        # b1 = _b.at[1:].set(a1)
         i = k - p + 1
         t1 = lax.dynamic_slice(t, i + p, p)
         t2 = lax.dynamic_slice(t, i, p)
@@ -59,14 +57,13 @@ def _bspline_basis_deboor(x, t, degree, open_spline):
             (t1 - x) / jnp.where(denom == 0, 1.0, denom),
             0.0
         ) * b
-        # b2 = _b.at[:-1].set(a2)
-        # b = b1 + b2
         b = jnp.concatenate([a2[0][None], a1[:-1] + a2[1:], a1[-1][None]])
  
     basis = jnp.zeros((n,))
     basis = lax.dynamic_update_slice(basis, b, k - degree)
     
     return basis
+
 
 @partial(jax.jit, static_argnames=("degree", "open_spline"))
 def basis(x: jax.Array, grid: jax.Array, degree: int = 3, open_spline: bool = False) -> jax.Array:

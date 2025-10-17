@@ -1,8 +1,5 @@
 import abc
 from typing import Sequence, Callable, overload
-from dataclasses import dataclass
-
-from jax.tree_util import register_dataclass
 
 from . import *
 from .tucker_tensor import TuckerTensor, Factors, Core
@@ -24,10 +21,15 @@ class FunctionalTucker(abc.ABC):
         tucker_tensor = TuckerTensor(core_tensor, factors)
         return tucker_tensor.to_tensor()
     
-    def factors(self, tg: TensorGrid) -> Factors:
+    def factors(self, tg: TensorGrid, mul_weights: bool = False) -> Factors:
         modes = list(range(self.dimension))
-        return tuple(self.basis(x, m) for x, m in zip(tg, modes))
-
+        factors = tuple(self.basis(x, m) for x, m in zip(tg, modes))
+        
+        if mul_weights:
+            factors = tuple(w[:, None] * f for w, f in zip(tg.weights, factors))
+        
+        return factors
+        
     def pinv(
             self, 
             tg: TensorGrid, 

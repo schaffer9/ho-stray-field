@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from quadax import quadgk
+from quadax import quadgk, quadts, quadcc
 from quadax.utils import QuadratureInfo
 
 from . import *
@@ -20,16 +20,16 @@ class GS(NamedTuple):
         return cls(*sinc_quad_1_over_sqrtx(rank, c0))
 
 
-def _quad(g, x, interval, alpha, stds: int = 9, **kwargs):
+def _quad(g, x, interval, alpha, stds: int = 10, **kwargs):
     s = jnp.sqrt(1 / (2 * jnp.maximum(alpha, 1.0)))
     lb, ub = jnp.min(interval), jnp.max(interval)
-    gaussian_interval = jnp.linspace(-s * stds, s * stds, 2 * stds + 1) - x
-    _interval = jnp.sort(jnp.concatenate([interval, gaussian_interval, jnp.asarray([x])]))
+    gaussian_interval = jnp.linspace(-s * stds, s * stds, 2) + x
+    _interval = jnp.sort(jnp.concatenate([interval, gaussian_interval]))
     _interval = jnp.clip(_interval, lb, ub)
     return quadgk(g, _interval, **kwargs)
 
 
-def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 9, **kwargs):
+def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 10, **kwargs):
     def g(y):
         r = (x - y) ** 2
         return jnp.exp(-alpha * r) * basis1d(y)
@@ -37,7 +37,7 @@ def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 9, **kwargs):
     return _quad(g, x, interval, alpha, stds=stds, **kwargs)
 
 
-def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 9, **kwargs):
+def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 10, **kwargs):
     def g(y):
         r = (x - y) ** 2
         return r * jnp.exp(-alpha * r) * basis1d(y)
@@ -46,12 +46,12 @@ def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 9, **kwargs):
 
 
 def superpotential_factors(
-        bspline: BSpline,
-        target_tg: TensorGrid,
-        quad_tg: TensorGrid,
-        gs: GS,
-        **kwargs
-    ):
+    bspline: BSpline,
+    target_tg: TensorGrid,
+    quad_tg: TensorGrid,
+    gs: GS,
+    **kwargs
+):
     modes = list(range(quad_tg.dim))
 
     def _integrate(f, alpha: jax.Array, mode: int):
@@ -76,10 +76,10 @@ def superpotential_factors(
 
 
 def fit_superpotential(
-    factors_pinv, factors_superpot, core
+    inv_factors, factors_superpot, core
 ):
     cores = jnp.asarray([
-        [fit(factors_pinv, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
+        [fit(inv_factors, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
         for alpha_factors in factors_superpot
     ])
     core = jnp.sum(cores, axis=(0, 1))
