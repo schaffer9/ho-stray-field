@@ -98,5 +98,5 @@ class TestSuperpotential(JaxTestCase):
         factors_superpot, info = superpotential_factors(elm_source, tg_quad, tg_source, gs, epsabs=1e-13, epsrel=0.0, order=31)
         self.assertTrue(info.err < 1e-13)
 
-        core = fit_superpotential(factors_pinv, factors_superpot, core_source)
+        core = fit_superpotential(factors_pinv, factors_superpot, core_source, gs)
         self.assertEqual(core.shape, (9, 10, 11, 3))

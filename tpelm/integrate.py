@@ -12,7 +12,7 @@ QuadRule: TypeAlias = Callable[[Grid1d], tuple[Weights, Nodes]]
 
 
 def gauss(degree: int) -> QuadRule:
-    nodes, weights = map(jnp.asarray, leggauss(degree))
+    nodes, weights = tree.map(jnp.asarray, leggauss(degree))
     
     def quad(domain: Grid1d) -> tuple[Weights, Nodes]:
         def weights_nodes(a, b):

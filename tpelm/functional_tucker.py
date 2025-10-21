@@ -33,17 +33,13 @@ class FunctionalTucker(abc.ABC):
     def pinv(
             self, 
             tg: TensorGrid, 
-            alpha: jax.Array | float | tuple[jax.Array | float, ...] = 0.0, 
             tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0
         ) -> Factors:
-        if not isinstance(alpha, Sequence):
-            alpha = tuple(alpha for _ in tg)
-
         if not isinstance(tol, Sequence):
             tol = tuple(tol for _ in tg)
 
         factors = self.factors(tg)
-        pinv_factors = tuple(regularized_pinv(X, wi, alpha_i, tol_i) for X, wi, alpha_i, tol_i in zip(factors, tg.weights, alpha, tol))
+        pinv_factors = tuple(regularized_pinv(X, wi, tol_i) for X, wi, tol_i in zip(factors, tg.weights, tol))
         return pinv_factors
     
     def factors_and_partials(self, tg: TensorGrid) -> tuple[Factors, tuple[Factors, ...]]:
@@ -119,18 +115,12 @@ def _elementwise_derivative(f, x):
     return y, df
 
 
-def regularized_pinv(X: jax.Array, weights: jax.Array | None = None, alpha: jax.Array | float = 0.0, tol: jax.Array | float = 0.0):
+def regularized_pinv(X: jax.Array, weights: jax.Array | None = None, tol: jax.Array | float = 1e-12):
     if weights is None:
         weights = jnp.ones((X.shape[0],))
     
-    X = weights[:, None] * X
-    U, S, VT = jnp.linalg.svd(X, full_matrices=False)
-    Sinv = lax.cond(
-        alpha == 0.0,
-        lambda: jnp.where(S < tol, 0.0, 1 / S),
-        lambda: jnp.where((S ** 2 + alpha) < tol, 0.0, S / (S ** 2 + alpha))
-    )
-    Xinv = (VT.T * Sinv) @ (weights[:, None] * U).T  # compute pseudoinverse
+    X = jnp.sqrt(weights[:, None]) * X
+    Xinv = jnp.linalg.pinv(X, rtol=tol) * jnp.sqrt(weights[None, :])
     return Xinv
 
 

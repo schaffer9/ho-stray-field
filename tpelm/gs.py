@@ -20,16 +20,16 @@ class GS(NamedTuple):
         return cls(*sinc_quad_1_over_sqrtx(rank, c0))
 
 
-def _quad(g, x, interval, alpha, stds: int = 10, **kwargs):
+def _quad(g, x, interval, alpha, stds: int = 2, **kwargs):
     s = jnp.sqrt(1 / (2 * jnp.maximum(alpha, 1.0)))
     lb, ub = jnp.min(interval), jnp.max(interval)
-    gaussian_interval = jnp.linspace(-s * stds, s * stds, 2) + x
+    gaussian_interval = jnp.linspace(-s * stds, s * stds, 2 * stds + 1) + x
     _interval = jnp.sort(jnp.concatenate([interval, gaussian_interval]))
     _interval = jnp.clip(_interval, lb, ub)
     return quadgk(g, _interval, **kwargs)
 
 
-def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 10, **kwargs):
+def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
     def g(y):
         r = (x - y) ** 2
         return jnp.exp(-alpha * r) * basis1d(y)
@@ -37,7 +37,7 @@ def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 10, **kwargs):
     return _quad(g, x, interval, alpha, stds=stds, **kwargs)
 
 
-def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 10, **kwargs):
+def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
     def g(y):
         r = (x - y) ** 2
         return r * jnp.exp(-alpha * r) * basis1d(y)
@@ -60,6 +60,7 @@ def superpotential_factors(
                 return bspline.basis(y, mode=mode)
             interval = quad_tg[mode]
             I, info = f(b, target, interval, alpha, **kwargs)
+            
             return I, info
         
         targets = target_tg[mode]
@@ -67,7 +68,6 @@ def superpotential_factors(
     
     I_gs, info1 = zip(*(lax.map(lambda a: _integrate(integrate_gs_term, a, mode), gs.alpha) for mode in modes))
     I_r2_gs, info2 = zip(*(lax.map(lambda a: _integrate(integrate_r2_gs_term, a, mode), gs.alpha) for mode in modes))
-    I_r2_gs = tree.map(lambda I: 1 / (8 * jnp.pi) * gs.omega[:, *(None for _ in I.shape[1:])] * I, I_r2_gs)
     factors = tuple(
         I_gs[:mode] + (I_r2_gs[mode],) + I_gs[mode+1:]
         for mode in modes
@@ -76,14 +76,29 @@ def superpotential_factors(
 
 
 def fit_superpotential(
-    inv_factors, factors_superpot, core
+    inv_factors, factors_superpot, core, gs
 ):
     cores = jnp.asarray([
         [fit(inv_factors, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
         for alpha_factors in factors_superpot
     ])
-    core = jnp.sum(cores, axis=(0, 1))
+    cores = gs.omega[None, :, *[None for _ in cores.shape[2:]]] * cores
+    core = 1 / (8 * jnp.pi) * jnp.sum(cores, axis=(0, 1))
     return core
+
+
+def superpotential(
+    core, factors_superpot, gs
+):
+    cores = jnp.asarray([
+        [TuckerTensor(core, tuple(factors)).to_tensor() for factors in zip(*alpha_factors)]
+        for alpha_factors in factors_superpot
+    ])
+    cores = gs.omega[None, :, *[None for _ in cores.shape[2:]]] * cores
+    core = 1 / (8 * jnp.pi) * jnp.sum(cores, axis=(0, 1))
+    #core = jnp.sum(cores, axis=(0, 1))
+    return core
+
 
 
 def merge_quad_info(*infos: QuadratureInfo) -> QuadratureInfo:
