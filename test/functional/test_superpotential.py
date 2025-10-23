@@ -1,12 +1,14 @@
 import timeit
 from functools import partial
+from pathlib import Path
+
 
 import pytest
-from quadax import quadgk
+import numpy as np
 
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
-from tpelm.functional_tucker import fit, fit_divergence, fit_laplace, fit_grad
+from tpelm.functional_tucker import fit
 from tpelm.tucker_tensor import TuckerTensor, tucker_dot
 from tpelm.gs import superpotential, fit_superpotential, superpotential_factors, merge_quad_info, GS
 
@@ -15,32 +17,55 @@ from ..sources import flower_state, vortex_state, m_uniform
 from .utils import write_csv_row
 
 
-targets = TensorGrid(*([jnp.linspace(-0.5, 0.5, 10)] * 3))
+# def _flower_state_np(x):
+#     a, b, c = 1, 2, 1
+#     mx = 1 / a * x[..., 0] * x[..., 2]
+#     my = 1 / c * x[..., 1] * x[..., 2] + 1 / b**3 * x[..., 1]**3 * x[..., 2]**3
+#     mz = np.ones_like(mx)
+#     m = np.stack([mx, my, mz], axis=-1)
+#     m = m / np.linalg.norm(m, axis=-1, keepdims=True)
+#     return m
+
+
+# def direct_int(x):
+#     opts = [{"epsrel": 1e-16, "epsabs":1e-12, "points": [xi]}
+#             for xi in x]
+#     def integrand(y1, y2, y3, x, i):
+#         y = np.stack([y1, y2, y3])
+#         return (np.asarray(np.linalg.norm(x - y) * _flower_state_np(y)))[i]
+#     res0 = nquad(integrand, [(-0.5, 0.5)] * 3, (x, 0,), opts=opts, full_output=True)
+#     res1 = nquad(integrand, [(-0.5, 0.5)] * 3, (x, 1,), opts=opts, full_output=True)
+#     res2 = nquad(integrand, [(-0.5, 0.5)] * 3, (x, 2,), opts=opts, full_output=True)
+#     res = np.array([res0[0], res1[0], res2[0]])
+#     err = np.max(np.array([res0[1], res1[1], res2[1]]))
+#     return 1 / (8 * np.pi) * res, err
+
+
+# def sp_for_flower_with_np(targets):
+#     pool = multiprocessing.Pool()
+#     _targets = np.asarray(targets.reshape(-1, 3))
+#     results = list(pool.map(direct_int, _targets))
+#     sp = np.asarray([res[0] for res in results])
+#     err = np.asarray([res[1] for res in results])
+#     sp = sp.reshape(*targets.shape)
+#     max_err = np.max(err)
+#     return np.asarray(sp), np.asarray(max_err)
+
+
+# t = np.linspace(-0.5, 0.5, 2)
+# targets = np.stack(np.meshgrid(t, t, t), axis=-1)
+# sp, error = sp_for_flower_with_np(targets)
+
 
 @pytest.fixture(scope="module")
 def flower_superpotential():
-    print("computing")
-    quad = partial(quadgk, epsabs=1e-10, epsrel=0.0, max_ninter=30)
+    file_path = Path(__file__).parent / "sp_flower.npy"
+    with open(file_path, "rb") as f:
+        sp_flower = np.load(f)
     
-    @jax.jit
-    def direct_int(x):
-        def i1(y1):
-            def i2(y2, y1):
-                def i3(y3, y2, y1):
-                    y = jnp.stack([y1, y2, y3])
-                    return jnp.linalg.norm(x - y) * flower_state(y)
-                
-                return quad(i3, jnp.array([-0.5, x[2], 0.5]), (y2, y1))[0]
-            
-            return quad(i2, jnp.array([-0.5, x[1], 0.5]), (y1,))[0]
-        
-        I, info = quad(i1, jnp.array([-0.5, x[0], 0.5]))
-        return 1 / (8 * jnp.pi) * I, info
+    return sp_flower
+    #return sp_for_flower_with_np(targets)
 
-    _targets = targets.grid.reshape(-1, 3)
-    result, info = jax.lax.map(direct_int, _targets, batch_size=20)
-    result = result.reshape(*targets.grid.shape)
-    return result, info
 
 
 @pytest.mark.functional
@@ -52,14 +77,11 @@ class TestSuperpotential:
     def teardown_class(self):
         jax.config.update("jax_enable_x64", False)
         
-    # @pytest.mark.parametrize("n", [10, 20, 40, 80])
-    # @pytest.mark.parametrize("device", ["cpu", "gpu"])
-    # def test_fit_flower_state(self, n, k, device, artifact_dir):  
-     
     @pytest.mark.parametrize("k", [2, 3, 4, 5, 6])
     def test_superpotential_flower_state(self, k, artifact_dir, flower_superpotential):
         csv_file = artifact_dir / "flower_state_sp_approx.csv"
-        result, info_direct = flower_superpotential
+        #result, max_quad_error = flower_superpotential
+        result = flower_superpotential
         degree = k - 1
         n = 40
 
@@ -73,11 +95,14 @@ class TestSuperpotential:
 
         # compute superpotential
         gs = GS.from_sinc_1_over_sqrtx(46, 1.9)
-        sp_factors, info = superpotential_factors(elm_m, targets, tg_m, gs,
+        #t = jnp.linspace(-0.5, 0.5, result.shape[0])
+        _t = (jnp.linspace(-0.5, 0.5, result.shape[i]) for i in range(3))
+        _targets = TensorGrid(*_t)
+        sp_factors, info = superpotential_factors(elm_m, _targets, tg_m, gs,
                                                   epsabs=1e-14, epsrel=0.0, order=31, max_ninter=200)
 
         gs_result = superpotential(core_m, sp_factors, gs)
-
+        
         err = jnp.max(jnp.abs(gs_result - result))
         data = {
             "k": k,
@@ -85,7 +110,6 @@ class TestSuperpotential:
             "error_max": err,
             "int_error": info.err,
             "int_status": info.status,
-            "direct_int_err": merge_quad_info(info_direct).err,
-            "direct_int_status": merge_quad_info(info_direct).status
+            #"direct_int_err": max_quad_error,
         }
         write_csv_row(csv_file, data)

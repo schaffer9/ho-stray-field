@@ -1,5 +1,6 @@
 import timeit
 from functools import partial
+import math
 
 import pytest
 
@@ -34,9 +35,11 @@ class TestFitting:
         
         csv_file = artifact_dir / f"fit_flower_{device}.csv"
         degree = k - 1
+
         tg = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
         elm = BSpline(tg, degree=degree)
-        tg_quad = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
+        # tg_quad = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
+        tg_quad = tg.to_gauss(int(math.ceil(degree + 1) / 2))
         
         inv_factors = elm.pinv(tg_quad)
         F = jnp.apply_along_axis(flower_state, -1, tg_quad.grid)
@@ -64,6 +67,7 @@ class TestFitting:
             "fit_time": fit_time
         }
         write_csv_row(csv_file, data)
+        jax.clear_caches()
         
     @pytest.mark.parametrize("n", [10, 20, 40, 80])
     @pytest.mark.parametrize("k", [2, 3, 4, 5, 6, 7, 8, 9])

@@ -16,9 +16,9 @@ class TensorGrid:
     weights: tuple[jax.Array, ...]
 
     def __init__(self, *knots: jax.Array, weights: None | jax.Array | tuple[jax.Array, ...] = None) -> None:
-        self.tensor_grid = tuple(kv for kv in knots)
-        self._lb = tuple(jnp.min(kv) for kv in self.tensor_grid)
-        self._ub = tuple(jnp.max(kv) for kv in self.tensor_grid)
+        self.tensor_grid = knots
+        self._lb = tree.map(jnp.min, self.tensor_grid)  #tuple(jnp.min(kv) for kv in self.tensor_grid)
+        self._ub = tree.map(jnp.max, self.tensor_grid)  #tuple(jnp.max(kv) for kv in self.tensor_grid)
         if weights is not None:
             self.weights = tuple(w for w in weights)
         else:
@@ -60,4 +60,4 @@ class TensorGrid:
     
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(*children[0], weights=children[1])
+        return cls(*(children[0]), weights=children[1])

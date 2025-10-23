@@ -32,7 +32,6 @@ def _bspline_basis_deboor(x, t, degree, open_spline):
     k = jnp.searchsorted(t, x, side="right") - 1
     k = jnp.where(x == t[-1], n - 1, k)
     if open_spline:
-        jax.debug.print("{k} {n}", k=k, n=n)
         b = jnp.where((k < degree) | (k > n - 1), 0.0, 1.0)
     else:
         b = jnp.array([1.0])
@@ -92,6 +91,10 @@ class BSpline(FunctionalTucker):
     @property
     def dimension(self) -> int:
         return self.grid.dim
+    
+    @property
+    def domain(self) -> TensorGrid:
+        return self.grid
     
     def basis(self, x: jax.Array, mode: int) -> jax.Array:
         _basis = basis(x, self.grid[mode], degree=self.degree)
