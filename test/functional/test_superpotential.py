@@ -8,7 +8,7 @@ import numpy as np
 
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
-from tpelm.functional_tucker import fit
+from tpelm.base import fit
 from tpelm.tucker_tensor import TuckerTensor, tucker_dot
 from tpelm.gs import superpotential, fit_superpotential, superpotential_factors, merge_quad_info, GS
 

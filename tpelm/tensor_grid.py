@@ -1,5 +1,4 @@
 from typing import Sequence, Self
-from dataclasses import dataclass
 
 from jax.tree_util import register_pytree_node_class
 
@@ -8,17 +7,9 @@ from .integrate import gauss
 
 
 @register_pytree_node_class
-@dataclass(init=False)
 class TensorGrid:
-    tensor_grid: tuple[jax.Array, ...]
-    _lb: tuple[jax.Array, ...]
-    _ub: tuple[jax.Array, ...]
-    weights: tuple[jax.Array, ...]
-
     def __init__(self, *knots: jax.Array, weights: None | jax.Array | tuple[jax.Array, ...] = None) -> None:
-        self.tensor_grid = knots
-        self._lb = tree.map(jnp.min, self.tensor_grid)  #tuple(jnp.min(kv) for kv in self.tensor_grid)
-        self._ub = tree.map(jnp.max, self.tensor_grid)  #tuple(jnp.max(kv) for kv in self.tensor_grid)
+        self.tensor_grid = tuple(knots)
         if weights is not None:
             self.weights = tuple(w for w in weights)
         else:
@@ -49,7 +40,9 @@ class TensorGrid:
     
     @property
     def bounds(self) -> tuple[tuple[jax.Array, ...], tuple[jax.Array, ...]]:
-        return self._lb, self._ub
+        _lb = tree.map(jnp.min, self.tensor_grid)
+        _ub = tree.map(jnp.max, self.tensor_grid)
+        return _lb, _ub
 
     @property
     def dim(self):

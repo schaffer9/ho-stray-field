@@ -4,7 +4,7 @@ from quadax import quadgk, quadts, quadcc
 from quadax.utils import QuadratureInfo
 
 from . import *
-from .functional_tucker import FunctionalTucker, fit
+from .base import TPELM, fit
 from .bspline import BSpline
 from .tensor_grid import TensorGrid
 from .integrate import sinc_quad_1_over_sqrtx
@@ -29,49 +29,24 @@ def _quad(g, x, interval, alpha, stds: int = 2, **kwargs):
     return quadgk(g, _interval, **kwargs)
 
 
-# def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
-#     def g(y):
-#         r = (x - y) ** 2
-#         return jnp.exp(-alpha * r) * basis1d(y)
-    
-#     return _quad(g, x, interval, alpha, stds=stds, **kwargs)
-
-
-# def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
-#     def g(y):
-#         r = (x - y) ** 2
-#         return r * jnp.exp(-alpha * r) * basis1d(y)
-    
-#     return _quad(g, x, interval, alpha, stds=stds, **kwargs)
 def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
-    with jax.ensure_compile_time_eval():
-        rank = basis1d(x).shape[0]
+    def g(y):
+        r = (x - y) ** 2
+        return jnp.exp(-alpha * r) * basis1d(y)
+    
+    return _quad(g, x, interval, alpha, stds=stds, **kwargs)
 
-    def g_basis_k(k):
-        def g(y):
-            r = (x - y) ** 2
-            return jnp.exp(-alpha * r) * basis1d(y)[k]
-        
-        return _quad(g, x, interval, alpha, stds=stds, **kwargs)
-
-    return jax.vmap(g_basis_k)(jnp.arange(rank))
 
 def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
-    with jax.ensure_compile_time_eval():
-        rank = basis1d(x).shape[0]
-
-    def g_basis_k(k):
-        def g(y):
-            r = (x - y) ** 2
-            return r * jnp.exp(-alpha * r) * basis1d(y)[k]
-        
-        return _quad(g, x, interval, alpha, stds=stds, **kwargs)
-
-    return jax.vmap(g_basis_k)(jnp.arange(rank))
+    def g(y):
+        r = (x - y) ** 2
+        return r * jnp.exp(-alpha * r) * basis1d(y)
+    
+    return _quad(g, x, interval, alpha, stds=stds, **kwargs)
 
 
 def superpotential_factors(
-    bspline: FunctionalTucker,
+    bspline: TPELM,
     target_tg: TensorGrid,
     quad_tg: TensorGrid,
     gs: GS,
@@ -93,7 +68,7 @@ def superpotential_factors(
         if batch_size is None:
             return jax.vmap(integrate_target)(targets)
         else:
-            return jax.lax.map(integrate_target, targets)
+            return jax.lax.map(integrate_target, targets, batch_size=batch_size)
     
     I_gs, info1 = zip(*(lax.map(lambda a: _integrate(integrate_gs_term, a, mode), gs.alpha) for mode in modes))
     I_r2_gs, info2 = zip(*(lax.map(lambda a: _integrate(integrate_r2_gs_term, a, mode), gs.alpha) for mode in modes))

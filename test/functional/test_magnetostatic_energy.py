@@ -1,4 +1,5 @@
 import timeit
+import itertools
 from functools import partial
 
 import pytest
@@ -6,10 +7,10 @@ from quadax import quadgk
 
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
-from tpelm.functional_tucker import fit, fit_divergence, fit_laplace, fit_grad
+from tpelm.base import fit, fit_divergence, fit_laplace, fit_grad
 from tpelm.tucker_tensor import TuckerTensor, tucker_dot
 from tpelm.gs import superpotential, fit_superpotential, superpotential_factors, merge_quad_info, GS
-from tpelm.magnetostatic import StrayFieldSolver
+from tpelm.magnetostatic import FTState, SPState, DomainState
 
 from .. import *
 from ..sources import flower_state, vortex_state, m_uniform
@@ -77,17 +78,20 @@ class TestEnergy:
 
     @pytest.mark.parametrize("n", [10, 20, 40, 80])
     @pytest.mark.parametrize("k", [4, 5, 6, 7])
-    @pytest.mark.parametrize("device", ["gpu"])
+    @pytest.mark.parametrize("device", ["gpu", "cpu"])
     def test_energy_flower_state(self, n, k, device, artifact_dir):
-        if device == "gpu" and not jax.devices("gpu"):
+        try:
+            if device == "gpu" and not jax.devices("gpu"):
+                pytest.skip("GPU not available")
+        except RuntimeError:
             pytest.skip("GPU not available")
 
         csv_file = artifact_dir / f"energy_flower_{device}.csv" 
-
-        #@partial(jax.jit, device=jax.devices(device)[0])
-        @jax.jit
+        grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
+        @partial(jax.jit, device=jax.devices(device)[0])
+        #@jax.jit
         def setup(quad_grid: TensorGrid):
-            grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
+            
             solver = StrayFieldSolver.create(
                 BSpline(grid, degree=k-1),
                 quad_grid=quad_grid,
@@ -101,7 +105,8 @@ class TestEnergy:
             mag = solver.fit_mag(mag)
             return mag.energy()
         
-        quad_grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
+        #quad_grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
+        quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
         runs = 1
         setup_time = timeit.timeit(lambda: setup(quad_grid)[1].core.block_until_ready(), number=runs) / runs
@@ -126,11 +131,10 @@ class TestEnergy:
             pytest.skip("GPU not available")
 
         csv_file = artifact_dir / f"energy_vortex_{device}.csv" 
-
-        #@partial(jax.jit, device=jax.devices(device)[0])
-        @jax.jit
+        grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
+        
+        @partial(jax.jit, device=jax.devices(device)[0])
         def setup(quad_grid: TensorGrid):
-            grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
             solver = StrayFieldSolver.create(
                 BSpline(grid, degree=k-1),
                 quad_grid=quad_grid,
@@ -138,13 +142,13 @@ class TestEnergy:
             )
             return solver, solver.fit_mag(vortex_state).tt
         
-        #@partial(jax.jit, device=jax.devices(device)[0])
-        @jax.jit
+        @partial(jax.jit, device=jax.devices(device)[0])
         def solve(solver, mag):
             mag = solver.fit_mag(mag)
             return mag.energy()
         
-        quad_grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
+        #quad_grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
+        quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
         runs = 1
         setup_time = timeit.timeit(lambda: setup(quad_grid)[1].core.block_until_ready(), number=runs) / runs
@@ -160,3 +164,69 @@ class TestEnergy:
             "run_time": run_time
         }
         write_csv_row(csv_file, data)
+
+    def test_two_layer(self, artifact_dir):
+        csv_file = artifact_dir / f"two_layer.csv"
+        k = 6
+        MS1 = 1.0
+        MS2 = 2.0
+        mag1 = lambda x: MS1 * vortex_state(x)
+        def mag2(x):
+            m = jnp.zeros_like(x).at[..., 2].set(-1).at[..., 1].set(0.5)
+            m = m / jnp.linalg.norm(m, axis=-1, keepdims=True)
+            return MS2 * m
+       
+        grid1 = TensorGrid(
+            jnp.linspace(-0.5, 0.5, 15),
+            jnp.linspace(-0.5, 0.5, 15),
+            jnp.linspace(-0.05, 0.0, 3),
+        )
+        grid2 = TensorGrid(
+            jnp.linspace(-0.5, 0.5, 16),
+            jnp.linspace(-0.5, 0.5, 16),
+            jnp.linspace(0.0, 0.05, 3),
+        )
+        grid3 = TensorGrid(
+            jnp.linspace(-0.5, 0.5, 17),
+            jnp.linspace(-0.5, 0.5, 17),
+            jnp.linspace(-0.05, 0.0, 3),
+        )
+        grid4 = TensorGrid(
+            jnp.linspace(-0.5, 0.5, 18),
+            jnp.linspace(-0.5, 0.5, 18),
+            jnp.linspace(0.0, 0.05, 3),
+        )
+        sp_elm1 = BSpline(grid1, degree=k-1)
+        sp_elm2 = BSpline(grid2, degree=k-1)
+        mag_elm1 = BSpline(grid3, degree=k-1)
+        mag_elm2 = BSpline(grid4, degree=k-1)
+        
+        solvers = [
+            StrayFieldSolver.create(elm, mag_elm, gk_max_ninter=30)
+            for elm, mag_elm in itertools.product([sp_elm1, sp_elm2], [mag_elm1, mag_elm2])
+        ]
+        mags = [solver.fit_mag(mag) for solver, mag in zip(solvers, [mag1, mag2] * 2)]
+        # energies = jnp.asarray([m.energy() for m in mags])
+        # print("energies", energies)
+        # energy = jnp.sum(jnp.asarray([m.energy() for m in mags]))
+        # print("energy", energy)
+        def print_tucker(tt):
+            shapes = tree.map(lambda t: t.shape, tt)
+            print(shapes)
+        stray_fields = [m.stray_field() for m in mags]
+        def _energy(stray_field: FittedFT, mag: FittedFT, quad_grid: TensorGrid) -> jax.Array:
+            factors = mag.factors(quad_grid, mul_weights=True)
+            sf_factors = stray_field.factors(quad_grid)
+            #weighted_factors = tuple(w[:, *([None for _ in f.shape[1:]])] * f for w, f in zip(weights, factors))
+            m = TuckerTensor(mag.tt.core, factors)
+            h = TuckerTensor(stray_field.tt.core, sf_factors)
+            print_tucker(m)
+            print_tucker(h)
+            return -1 / (16 * jnp.pi) * tucker_dot(h, m)
+        e1 = _energy(stray_fields[0], mags[0], grid3.to_gauss(k))
+        e2 = _energy(stray_fields[1], mags[0], grid3.to_gauss(k))
+        e3 = _energy(stray_fields[2], mags[1], grid4.to_gauss(k))
+        e4 = _energy(stray_fields[3], mags[1], grid4.to_gauss(k))
+        print("energies", e1, e2, e3, e4)
+        print("energy", e1 + e2 + e3 + e4)
+        assert False

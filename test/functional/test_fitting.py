@@ -6,7 +6,7 @@ import pytest
 
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
-from tpelm.functional_tucker import fit
+from tpelm.base import fit
 from tpelm.tucker_tensor import TuckerTensor
 
 from .. import *
@@ -38,7 +38,6 @@ class TestFitting:
 
         tg = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
         elm = BSpline(tg, degree=degree)
-        # tg_quad = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
         tg_quad = tg.to_gauss(int(math.ceil(degree + 1) / 2))
         
         inv_factors = elm.pinv(tg_quad)

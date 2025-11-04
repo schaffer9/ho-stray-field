@@ -1,5 +1,5 @@
 
-from tpelm.functional_tucker import fit, regularized_pinv, fit_divergence, fit_laplace, fit_grad
+from tpelm.base import fit, regularized_pinv, fit_divergence, fit_laplace, fit_grad
 from tpelm.bspline import basis, eval_spline, BSpline
 from tpelm.tensor_grid import TensorGrid
 from tpelm.tucker_tensor import TuckerTensor

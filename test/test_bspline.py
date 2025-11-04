@@ -1,5 +1,5 @@
 
-from tpelm.functional_tucker import fit, regularized_pinv, fit_divergence, fit_laplace, fit_grad
+from tpelm.base import fit, regularized_pinv, fit_divergence, fit_laplace, fit_grad, factors_pinv
 from tpelm.bspline import basis, eval_spline, BSpline
 from tpelm.tensor_grid import TensorGrid
 from tpelm.tucker_tensor import TuckerTensor
@@ -12,7 +12,7 @@ class TestSplineBasis(JaxTestCase):
     def test_000_basis0(self):
         t = jnp.array([-1.0, -0.5, 0.0, 0.5, 1.0])
         x = jnp.array([-1.1, -1.0, -0.5, -0.1, 0.25, 1.0, 1.1])
-        b = basis(x, t, 0, open_spline=True)
+        b = basis(x, t, 0)
         self.assertIsclose(
             b,
             jnp.array(
@@ -31,41 +31,40 @@ class TestSplineBasis(JaxTestCase):
     def test_001_basis1(self):
         t = jnp.array([-1.0, -0.5, 0.0, 0.5, 1.0])
         x = -1
-        b = basis(x, t, 1, open_spline=True)
-        self.assertIsclose(b, jnp.array([0, 0, 0]))
+        b = basis(x, t, 1)
+        print(b)
+        self.assertIsclose(b, jnp.array([1, 0, 0, 0, 0]))
         x = -2
-        b = basis(x, t, 1, open_spline=True)
-        self.assertIsclose(b, jnp.array([0, 0, 0]))
+        b = basis(x, t, 1)
+        self.assertIsclose(b, jnp.array([0, 0, 0, 0, 0]))
         x = 0
-        b = basis(x, t, 1, open_spline=True)
-        self.assertIsclose(b, jnp.array([0, 1, 0]))
+        b = basis(x, t, 1)
+        self.assertIsclose(b, jnp.array([0, 0, 1, 0, 0]))
         x = 1.0
-        b = basis(x, t, 1, open_spline=True)
-        self.assertIsclose(b, jnp.array([0, 0, 0]))
+        b = basis(x, t, 1)
+        self.assertIsclose(b, jnp.array([0, 0, 0, 0, 1]))
         x = 2.0
-        b = basis(x, t, 1, open_spline=True)
-        self.assertIsclose(b, jnp.array([0, 0, 0]))
+        b = basis(x, t, 1)
+        self.assertIsclose(b, jnp.array([0, 0, 0, 0, 0]))
 
     def test_002_basis2(self):
         t = jnp.array([-1.0, -0.5, 0.0, 0.5, 1.0])
         x = jnp.array([-1.0, -0.25, 0.25, 1.0])
-        b = basis(x, t, 2, open_spline=True)
+        b = basis(x, t, 2)
         self.assertIsclose(
             b,
             jnp.array(
-                [
-                    [0.0, 0.0],
-                    [0.75, 0.125],
-                    [0.125, 0.75],
-                    [0.0, 0.0],
-                ]
+                [[1.,    0.,  0.,  0.,  0.,  0.],
+                 [0.,   0.125, 0.75, 0.125, 0., 0.],
+                 [0.,   0., 0.125, 0.75, 0.125, 0.],
+                 [0.,   0., 0., 0., 0., 1.]]
             ),
         )
 
-    def test_004_closed_spline(self):
+    def test_004_extrapolate(self):
         t = jnp.array([-1.0, -0.5, 0.0, 0.5, 1.0])
         x = jnp.array([-1.1, -1.0, -0.25, 0.25, 1.0, 1.1])
-        b = basis(x, t, 2, open_spline=False)
+        b = basis(x, t, 2, extrapolate=True)
         result = jnp.array(
             [
                 [1.44, -0.46000013, 0.02000001, 0.0, 0.0, 0.0],
@@ -83,15 +82,15 @@ class TestSplineBasis(JaxTestCase):
         params = jnp.array([1, 1, 1, 1, 1, 1, 1])
         x = jnp.linspace(-1, 1, 100)
         result = jnp.ones((100,))
-        y = eval_spline(x, t, params, degree=3, open_spline=False)
+        y = eval_spline(x, t, params, degree=3)
         self.assertIsclose(y, result)
 
     def test_006_eval_spline_closed(self):
         t = jnp.array([-1, 0.0, 1.0])
-        params = jnp.array([1, ])
+        params = jnp.array([0, 1, 0])
         x = jnp.linspace(-1, 1, 100)
         result = jnp.where(x < 0, 1 + x, 1 - x)
-        y = eval_spline(x, t, params, degree=1, open_spline=True)
+        y = eval_spline(x, t, params, degree=1)
         self.assertIsclose(y, result)
 
 
@@ -129,7 +128,7 @@ class TestBSpline(JaxTestCase):
         b1 = jax.vmap(jax.jacfwd(basis1))(t1)
         b2 = jax.vmap(jax.jacfwd(basis2))(t2)
         self.assertPytreeEqual(d_factors, ((b1, f2), (f1, b2)))
-        self.assertPytreeEqual(factors, factors_true)
+        self.assertIsclose(factors, factors_true)
 
 
 class TestTPELMFit(JaxTestCase):
@@ -142,9 +141,9 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline.pinv(tg_quad)
+        _factors_pinv = factors_pinv(bspline.factors(tg_quad))
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
-        core = fit(factors_pinv, F)
+        core = fit(_factors_pinv, F)
 
         t1 = jnp.linspace(-1, 1, 20)
         t2 = jnp.linspace(-1, 1, 20)
@@ -162,12 +161,12 @@ class TestTPELMFit(JaxTestCase):
         tg_basis = TensorGrid(t1, t2, t3)
         bspline = BSpline(tg_basis, degree=3)
 
-        t1 = jnp.linspace(-jnp.pi, jnp.pi, 70)
-        t2 = jnp.linspace(-jnp.pi, jnp.pi, 71)
-        t3 = jnp.linspace(-jnp.pi, jnp.pi, 72)
+        t1 = jnp.linspace(-jnp.pi, jnp.pi, 100)
+        t2 = jnp.linspace(-jnp.pi, jnp.pi, 101)
+        t3 = jnp.linspace(-jnp.pi, jnp.pi, 102)
         tg_quad = TensorGrid(t1, t2, t3)
         factors = bspline.factors(tg_quad)
-        factors_pinv = tuple(regularized_pinv(X) for X in factors)
+        factors_pinv = tuple(regularized_pinv(X, tol=0.0) for X in factors)
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         core = fit(factors_pinv, F)
 
@@ -178,7 +177,6 @@ class TestTPELMFit(JaxTestCase):
         factors = bspline.factors(tg_val)
         f_approx = jnp.einsum("abc,ia,jb,kc->ijk", core, *factors)
         f_true = jnp.apply_along_axis(f, -1, tg_val.grid)
-        
         self.assertIsclose(f_approx, f_true, atol=1e-2)
 
     def test_003_fit_to_tucker(self):
@@ -190,9 +188,9 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline_result.pinv(tg_quad)
+        _factors_pinv = factors_pinv(bspline_result.factors(tg_quad))
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
-        f_core = fit(factors_pinv, F)  # and compute the tucker tensor format of the fit
+        f_core = fit(_factors_pinv, F)  # and compute the tucker tensor format of the fit
 
         t1 = jnp.linspace(-1, 1, 7)
         t2 = jnp.linspace(-1, 1, 8)
@@ -200,11 +198,11 @@ class TestTPELMFit(JaxTestCase):
         tg_quad = TensorGrid(*nodes, weights=weights)
         tg_basis = TensorGrid(t1, t2)
         bspline = BSpline(tg_basis, degree=3)  # Then fit a new B-spline to the tucker format
-        factors_pinv = bspline.pinv(tg_quad)
+        _factors_pinv = factors_pinv(bspline.factors(tg_quad))
         f_factors = bspline_result.factors(tg_quad)
         F = TuckerTensor(f_core, f_factors)
         
-        core = jax.jit(fit)(factors_pinv, F)  # by using fit_to_tucker
+        core = jax.jit(fit)(_factors_pinv, F)  # by using fit_to_tucker
         
         self.assertEqual(core.shape, (9, 10))  # and check the result
         
@@ -221,10 +219,10 @@ class TestTPELMFit(JaxTestCase):
         tg_basis = TensorGrid(t1)
         bspline = BSpline(tg_basis, degree=3)
 
-        factors_pinv = bspline.pinv(tg_basis)
+        _factors_pinv = factors_pinv(bspline.factors(tg_basis))
         F = 42
         with self.assertRaises(NotImplementedError):
-            fit(factors_pinv, F)
+            fit(_factors_pinv, F)
 
     def test_005_fit_multivariate_function(self):
         f = lambda x: jnp.sin(x)
@@ -235,9 +233,9 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline.pinv(tg_quad)
+        _factors_pinv = factors_pinv(bspline.factors(tg_quad))
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
-        core = fit(factors_pinv, F)
+        core = fit(_factors_pinv, F)
 
         t1 = jnp.linspace(-1, 1, 20)
         t2 = jnp.linspace(-1, 1, 20)
@@ -259,9 +257,9 @@ class TestTPELMFit(JaxTestCase):
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2))
         tg_quad = TensorGrid(*nodes, weights=weights)
-        factors_pinv = bspline_result.pinv(tg_quad)
+        _inv_factors = factors_pinv(bspline_result.factors(tg_quad))
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
-        f_core = fit(factors_pinv, F)  # and compute the tucker tensor format of the fit
+        f_core = fit(_inv_factors, F)  # and compute the tucker tensor format of the fit
 
         t1 = jnp.linspace(-1, 1, 7)
         t2 = jnp.linspace(-1, 1, 8)
@@ -269,11 +267,11 @@ class TestTPELMFit(JaxTestCase):
         tg_quad = TensorGrid(*nodes, weights=weights)
         tg_basis = TensorGrid(t1, t2)
         bspline = BSpline(tg_basis, degree=3)  # Then fit a new B-spline to the tucker format
-        factors_pinv = bspline.pinv(tg_quad)
+        _factors_pinv = factors_pinv(bspline.factors(tg_quad))
         f_factors = bspline_result.factors(tg_quad)
         F = TuckerTensor(f_core, f_factors)
         
-        core = jax.jit(fit)(factors_pinv, F)  # by using fit_to_tucker
+        core = jax.jit(fit)(_factors_pinv, F)  # by using fit_to_tucker
         
         self.assertEqual(core.shape, (9, 10, 2))  # and check the result
         
@@ -295,8 +293,8 @@ class TestTPELMFit(JaxTestCase):
         bspline = BSpline(tg_basis, degree=3)
 
         tg_quad = tg_basis.to_gauss(3)
-        inv_factors = bspline.pinv(tg_quad)
-        core = fit(inv_factors, f, tg_quad)
+        _inv_factors = factors_pinv(bspline.factors(tg_quad))
+        core = fit(_inv_factors, f, tg_quad)
 
         t1 = jnp.linspace(-1, 1, 20)
         t2 = jnp.linspace(-1, 1, 20)
@@ -314,10 +312,10 @@ class TestTPELMFit(JaxTestCase):
         bspline = BSpline(tg_basis, degree=3)
 
         tg_quad = tg_basis.to_gauss(3)
-        inv_factors = bspline.pinv(tg_quad)
+        _inv_factors = factors_pinv(bspline.factors(tg_quad))
         F = jnp.apply_along_axis(f, -1, tg_quad.grid)
         with self.assertRaises(TypeError):
-            fit(inv_factors, F, tg_quad)
+            fit(_inv_factors, F, tg_quad)
 
     def test_009_fit_func_tucker(self):
         pass
@@ -375,7 +373,7 @@ class TestDivergence(JaxTestCase):
         bspline = BSpline(tg_basis, degree=5)
 
         tg_quad = tg_basis.to_gauss(4)
-        inv_factors = bspline.pinv(tg_quad)
+        inv_factors = factors_pinv(bspline.factors(tg_quad))
         core = fit(inv_factors, f, tg_quad)
 
         div_f = _divergence(f)
@@ -403,7 +401,7 @@ class TestLaplace(JaxTestCase):
         bspline = BSpline(tg_basis, degree=6)
 
         tg_quad = tg_basis.to_gauss(4)
-        inv_factors = bspline.pinv(tg_quad)
+        inv_factors = factors_pinv(bspline.factors(tg_quad))
         core = fit(inv_factors, f, tg_quad)
 
         lap_f = laplace(f)
@@ -432,7 +430,7 @@ class TestGrad(JaxTestCase):
         bspline = BSpline(tg_basis, degree=6)
 
         tg_quad = tg_basis.to_gauss(4)
-        inv_factors = bspline.pinv(tg_quad)
+        inv_factors = factors_pinv(bspline.factors(tg_quad))
         core = fit(inv_factors, f, tg_quad)
 
         grad_f = jax.jacfwd(f)

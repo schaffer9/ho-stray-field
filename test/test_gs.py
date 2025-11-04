@@ -1,5 +1,5 @@
 from tpelm.gs import GS, superpotential_factors, integrate_gs_term, integrate_r2_gs_term, fit_superpotential
-from tpelm.functional_tucker import fit
+from tpelm.base import fit, factors_pinv
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
 from tpelm.integrate import gauss, sinc_quad_1_over_sqrtx
@@ -87,16 +87,17 @@ class TestSuperpotential(JaxTestCase):
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2), gauss(3)(t3))
         tg_quad = TensorGrid(*nodes, weights=weights)
         F = jnp.apply_along_axis(flower_state, -1, tg_quad.grid)
-        core_source = fit(elm_source.pinv(tg_quad), F)
+        
+        core_source = fit(factors_pinv(elm_source.factors(tg_quad), tg_quad.weights), F)
 
         t1 = jnp.linspace(-0.5, 0.5, 7)
         t2 = jnp.linspace(-0.5, 0.5, 8)
         t3 = jnp.linspace(-0.5, 0.5, 9)
         elm_sp = BSpline(TensorGrid(t1, t2, t3), degree=3)
         
-        factors_pinv = elm_sp.pinv(tg_quad)
+        inv_factors = factors_pinv(elm_sp.factors(tg_quad), tg_quad.weights)
         factors_superpot, info = superpotential_factors(elm_source, tg_quad, tg_source, gs, epsabs=1e-13, epsrel=0.0, order=31)
         self.assertTrue(info.err < 1e-13)
 
-        core = fit_superpotential(factors_pinv, factors_superpot, core_source, gs)
+        core = fit_superpotential(inv_factors, factors_superpot, core_source, gs)
         self.assertEqual(core.shape, (9, 10, 11, 3))
