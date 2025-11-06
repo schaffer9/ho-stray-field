@@ -7,6 +7,25 @@ from datetime import datetime
 from pathlib import Path
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--device",
+        action="store",
+        default="gpu",
+        #choices=["cpu", "gpu"],
+        help="Select device to run JAX tests on.",
+    )
+
+
+@pytest.fixture(scope="session")
+def device(request):
+    device = request.config.getoption("--device")
+    try:
+        return jax.devices(device)[0]
+    except RuntimeError:
+        return jax.devices("cpu")[0]
+
+
 @pytest.fixture(scope="session")
 def artifact_dir(request):
     """Create an artifact directory for this pytest run (only if functional tests are selected)."""

@@ -12,7 +12,7 @@ QuadRule: TypeAlias = Callable[[Grid1d], tuple[Weights, Nodes]]
 
 
 def gauss(degree: int) -> QuadRule:
-    """Gauss–Legendre quadrature rule
+    """Gauss–Legendre quadrature rule.
 
     Parameters
     ----------
@@ -24,12 +24,12 @@ def gauss(degree: int) -> QuadRule:
     
     Examples
     --------
-    >>> weights, nodes = gauss(5)(jnp.array([-10, 10]))
+    >>> weights, nodes = gauss(3)(jnp.array([-10, 0, 10]))
     >>> weights
     Array([2.777778 , 4.4444447, 2.777778 , 2.777778 , 4.4444447, 2.777778 ],      dtype=float32)
     >>> nodes
     Array([-8.872984 , -5.       , -1.1270165,  1.1270165,  5.       ,
-        8.872984 ], dtype=float32)
+            8.872984 ], dtype=float32)
     """
     nodes, weights = tree.map(jnp.asarray, leggauss(degree))
     
