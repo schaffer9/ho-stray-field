@@ -1,4 +1,7 @@
 # tests/functional/conftest.py
+import gc
+
+import jax
 import pytest
 from datetime import datetime
 from pathlib import Path
@@ -22,3 +25,11 @@ def artifact_dir(request):
     yield path  # pass to tests
 
     print(f"[functional teardown] Finished functional tests in: {path}")
+
+
+@pytest.fixture(autouse=True)
+def clean_jax():
+    yield
+    gc.collect()
+    jax.clear_caches()
+    jax.random.uniform(jax.random.key(0), ()).block_until_ready()

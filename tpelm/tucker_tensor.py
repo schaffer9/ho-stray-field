@@ -8,10 +8,23 @@ Core: TypeAlias = jax.Array
 
 
 class TuckerTensor(NamedTuple):
+    """Tucker tensor implementation
+
+    Attributes
+    ----------
+    core : Core
+    factors : Factors
+    """
     core: Core
     factors: Factors
 
     def to_tensor(self) -> jax.Array:
+        """Expands the Tucker tensor to a full tensor
+
+        Returns
+        -------
+        jax.Array
+        """
         letters = string.ascii_lowercase
         n_modes = len(self.factors)
 
@@ -30,11 +43,33 @@ class TuckerTensor(NamedTuple):
         return jnp.einsum(einsum_str, self.core, *self.factors)
 
     def dot(self, B: Self) -> jax.Array:
+        """Dot product with another Tucker Tensor
+
+        Parameters
+        ----------
+        B : TuckerTensor
+
+        Returns
+        -------
+        jax.Array
+            Scalar
+        """
         return tucker_dot(self, B)
     
 
 def tucker_dot(A: TuckerTensor, B: TuckerTensor) -> jax.Array:
-    
+    """Dot product of two Tucker tensors
+
+    Parameters
+    ----------
+    A : TuckerTensor
+    B : TuckerTensor
+
+    Returns
+    -------
+    jax.Array
+        Scalar
+    """
     letters = string.ascii_lowercase
     n_modes = len(A.factors)
 

@@ -12,6 +12,25 @@ QuadRule: TypeAlias = Callable[[Grid1d], tuple[Weights, Nodes]]
 
 
 def gauss(degree: int) -> QuadRule:
+    """Gauss–Legendre quadrature rule
+
+    Parameters
+    ----------
+    degree : int
+
+    Returns
+    -------
+    QuadRule
+    
+    Examples
+    --------
+    >>> weights, nodes = gauss(5)(jnp.array([-10, 10]))
+    >>> weights
+    Array([2.777778 , 4.4444447, 2.777778 , 2.777778 , 4.4444447, 2.777778 ],      dtype=float32)
+    >>> nodes
+    Array([-8.872984 , -5.       , -1.1270165,  1.1270165,  5.       ,
+        8.872984 ], dtype=float32)
+    """
     nodes, weights = tree.map(jnp.asarray, leggauss(degree))
     
     def quad(domain: Grid1d) -> tuple[Weights, Nodes]:
@@ -26,7 +45,20 @@ def gauss(degree: int) -> QuadRule:
     return quad
 
 
-def sinc_quad(n, c0):
+def sinc_quad(n: int, c0: float) -> tuple[Weights, Nodes]:
+    """Sinc quadrature
+
+    Parameters
+    ----------
+    n : int
+        number or quadrature nodes
+    c0 : float
+        spacing
+
+    Returns
+    -------
+    tuple[Weights, Nodes]
+    """
     h = c0 * jnp.log(n) / n
     j = jnp.arange(n)
     x = jnp.sinh(j * h)
@@ -36,6 +68,19 @@ def sinc_quad(n, c0):
 
 
 def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9):
+    r"""Sinc quadrature for :math:`1/\sqrt{x}`.
+
+    Parameters
+    ----------
+    n : int
+        number or quadrature nodes
+    c0 : float
+        spacing
+
+    Returns
+    -------
+    tuple[Weights, Nodes]
+    """
     omega, alpha = sinc_quad(rank, c0)
     alpha = alpha ** 2
     omega = 1 / jnp.sqrt(jnp.pi) * omega

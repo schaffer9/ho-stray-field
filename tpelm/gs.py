@@ -1,4 +1,4 @@
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
 from quadax import quadgk, quadts, quadcc
 from quadax.utils import QuadratureInfo
@@ -8,15 +8,37 @@ from .base import TPELM, fit
 from .bspline import BSpline
 from .tensor_grid import TensorGrid
 from .integrate import sinc_quad_1_over_sqrtx
-from .tucker_tensor import TuckerTensor
+from .tucker_tensor import TuckerTensor, Factors, Core
 
 
 class GS(NamedTuple):
+    """Gaussian sum approximation
+
+    Attributes
+    ----------
+    omega : jax.Array
+    alpha : jax.Array
+
+    """
     omega: jax.Array
     alpha: jax.Array
 
     @classmethod
-    def from_sinc_1_over_sqrtx(cls, rank: int, c0: float = 1.9):
+    def from_sinc_1_over_sqrtx(cls, rank: int, c0: float = 1.9) -> Self:
+        r"""Creates a Gaussian sum approximation for :math:`1/\sqrt{x}` with
+        sinc quadrature.
+
+        Parameters
+        ----------
+        rank : int
+            number of terms in the Gaussian sum
+        c0 : float, optional
+            sinc quadrature coefficient, by default 1.9
+
+        Returns
+        -------
+        GS
+        """
         return cls(*sinc_quad_1_over_sqrtx(rank, c0))
 
 
@@ -46,19 +68,41 @@ def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
 
 
 def superpotential_factors(
-    bspline: TPELM,
+    elm: TPELM,
     target_tg: TensorGrid,
     quad_tg: TensorGrid,
     gs: GS,
     batch_size: int | None = None,
     **kwargs
-):
+) -> tuple[tuple[Factors, ...], QuadratureInfo]:
+    """Computes the factor matrices for :math:`|x|` for all `alpha` in the 
+    Gaussian sum approximation `gs` for all targets on the provided tensor grid.
+    `quad_tg` specifies the integration domain with optional breakpoints for the 
+    addaptive quadrature.
+
+    Parameters
+    ----------
+    elm : TPELM
+    target_tg : TensorGrid
+        targets at which the integrals are evaluated
+    quad_tg : TensorGrid
+        integration domain with optional breakpoints
+    gs : GS
+    batch_size : int | None, optional
+        if provided performs serial computation with this batch size, by default None
+    kwargs : Any
+        further kwargs for the addaptive quadrature
+
+    Returns
+    -------
+    tuple[tuple[Factors, ...], QuadratureInfo]
+    """
     modes = list(range(quad_tg.dim))
 
     def _integrate(f, alpha: jax.Array, mode: int):
         def integrate_target(target):
             def b(y):
-                return bspline.basis(y, mode=mode)
+                return elm.basis(y, mode=mode)
             interval = quad_tg[mode]
             I, info = f(b, target, interval, alpha, **kwargs)
             
@@ -73,15 +117,29 @@ def superpotential_factors(
     I_gs, info1 = zip(*(lax.map(lambda a: _integrate(integrate_gs_term, a, mode), gs.alpha) for mode in modes))
     I_r2_gs, info2 = zip(*(lax.map(lambda a: _integrate(integrate_r2_gs_term, a, mode), gs.alpha) for mode in modes))
     factors = tuple(
-        I_gs[:mode] + (I_r2_gs[mode],) + I_gs[mode+1:]
+        I_gs[:mode] + (I_r2_gs[mode],) + I_gs[mode + 1:]
         for mode in modes
     )
     return factors, merge_quad_info(*info1, *info2)
 
 
 def fit_superpotential(
-    inv_factors, factors_superpot, core, gs
-):
+    inv_factors: Factors, factors_superpot: tuple[Factors, ...], core: Core, gs: GS
+) -> Core:
+    """Computes the core tensor corresponding the the inverse factors `inv_factors`
+    for the given GS approximation of the superpotential given by `factors_superpot` and `core`.
+
+    Parameters
+    ----------
+    inv_factors : Factors
+    factors_superpot : tuple[Factors, ...]
+    core : Core
+    gs : GS
+
+    Returns
+    -------
+    Core
+    """
     cores = jnp.asarray([
         [fit(inv_factors, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
         for alpha_factors in factors_superpot
@@ -92,8 +150,20 @@ def fit_superpotential(
 
 
 def superpotential(
-    core, factors_superpot, gs
-):
+    core: Core, factors_superpot: tuple[Factors, ...], gs: GS
+) -> jax.Array:
+    """Evaluates the superpotential
+
+    Parameters
+    ----------
+    core : Core
+    factors_superpot : tuple[Factors, ...]
+    gs : GS
+
+    Returns
+    -------
+    jax.Array
+    """
     sp = jnp.asarray([
         [TuckerTensor(core, tuple(factors)).to_tensor() for factors in zip(*alpha_factors)]
         for alpha_factors in factors_superpot

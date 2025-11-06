@@ -8,8 +8,12 @@ from . import *
 from .tucker_tensor import TuckerTensor, Factors, Core
 from .tensor_grid import TensorGrid
 
+Tol = jax.Array | float | tuple[jax.Array | float, ...]
+
 
 class TPELM(abc.ABC):
+    """Base class for Multilinear Tensor Product ELM
+    """
     @property
     @abc.abstractmethod
     def dimension(self) -> int:
@@ -36,24 +40,65 @@ class TPELM(abc.ABC):
                 tucker_tensor = TuckerTensor(core_tensor, factors)
                 return tucker_tensor.to_tensor()[*(0 for _ in range(len(factors)))]
             return jnp.apply_along_axis(eval_point, -1, x)
-    
+
     def factors(self, tg: TensorGrid, mul_weights: bool = False) -> Factors:
+        """Computes the factor matrices on the given tensor grid
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        mul_weights : bool, optional
+            multiply integration weights onto the factor matrices, by default False
+
+        Returns
+        -------
+        Factors
+        """
         modes = list(range(self.dimension))
         factors = tuple(self.basis(x, m) for x, m in zip(tg, modes))
-        
+
         if mul_weights:
             factors = tuple(w[:, None] * f for w, f in zip(tg.weights, factors))
-        
+
         return factors
-        
+
+    def pinv(self, tg: TensorGrid, tol: Tol = 0.0) -> Factors:
+        """Computes the pseudoinverses of the factor matrices.
+        Integration weights of the tensor grid are included
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        tol : float | tuple[float, ...], optional
+            Cutoff tolerance for small singular values, by default 0.0
+
+        Returns
+        -------
+        Factors
+            Inverse factors
+        """
+        factors = self.factors(tg)
+        return factors_pinv(factors, tg.weights, tol=tol)
+
     def factors_and_partials(self, tg: TensorGrid) -> tuple[Factors, tuple[Factors, ...]]:
+        """Computes the factors and partial derivatives of the factors for the given
+        tensor grid.
+
+        Parameters
+        ----------
+        tg : TensorGrid
+
+        Returns
+        -------
+        tuple[Factors, tuple[Factors, ...]]
+        """
         modes = list(range(self.dimension))
-        _factors, _factors_derivative = tuple(zip(
-            *(_elementwise_derivative(lambda x: self.basis(x, m), xi)
-            for xi, m in zip(tg, modes))
-        ))
+        _factors, _factors_derivative = tuple(
+            zip(*(_elementwise_derivative(lambda x: self.basis(x, m), xi) for xi, m in zip(tg, modes)))
+        )
+
         def _partial(i):
-            f = _factors[:i] + (_factors_derivative[i],) + _factors[i+1:]
+            f = _factors[:i] + (_factors_derivative[i],) + _factors[i + 1:]
             return f
 
         partials = tuple(_partial(i) for i in range(self.dimension))
@@ -64,11 +109,30 @@ class TPELM(abc.ABC):
         tg: TensorGrid, 
         f: TuckerTensor | jax.Array | Callable, 
         inv_factors: Factors | None = None,
-        tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0,
+        tol: Tol = 0.0,
     ) -> "FunctionalTucker":
+        """Fits the TPELM to a function. The function can be given as
+        a Tucker Tensor, array or callable corresponding to the given tensor grid
+        or inverse factors.
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        f : TuckerTensor | jax.Array | Callable
+        inv_factors : Factors | None, optional
+            if not provided, inverse factors are computed on the fly, by default None
+        tol : float | tuple[jax.Array  |  float, ...], optional
+            Cutoff tolerance for small singular values, by default 0.0
+
+        Returns
+        -------
+        FunctionalTucker
+            the fitted function in `FunctionalTucker` format
+        """
         if inv_factors is None:
             factors = self.factors(tg)
             inv_factors = factors_pinv(factors, tg.weights, tol=tol)
+
         if callable(f):
             core = fit(inv_factors, f, tg)
         else:
@@ -80,6 +144,10 @@ class TPELM(abc.ABC):
 @register_dataclass
 @dataclass
 class FunctionalTucker:
+    """The Functional Tucker Tensor format represents a fitted function
+    which included the core tensor and the corresponding basis functions
+    given by a `TPELM`.
+    """
     core: Core
     elm: TPELM
 
@@ -87,13 +155,48 @@ class FunctionalTucker:
         return self.elm(x, self.core)
     
     def factors(self, tg: TensorGrid, mul_weights: bool = False) -> Factors:
+        """Computes the factor matrices on the given tensor grid
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        mul_weights : bool, optional
+            multiply integration weights onto the factor matrices, by default False
+
+        Returns
+        -------
+        Factors
+        """
         return self.elm.factors(tg, mul_weights=mul_weights)
     
     def tt(self, tg: TensorGrid, mul_weights: bool = False) -> TuckerTensor:
+        """Converts the Functional Tucker to a Tucker tensor.
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        mul_weights : bool, optional
+            multiply integration weights onto the factor matrices, by default False
+
+        Returns
+        -------
+        Factors
+        """
         factors = self.factors(tg, mul_weights=mul_weights)
         return TuckerTensor(self.core, factors)
 
     def factors_and_partials(self, tg: TensorGrid) -> tuple[Factors, tuple[Factors, ...]]:
+        """Computes the factors and partial derivatives of the factors for the given
+        tensor grid.
+
+        Parameters
+        ----------
+        tg : TensorGrid
+
+        Returns
+        -------
+        tuple[Factors, tuple[Factors, ...]]
+        """
         return self.elm.factors_and_partials(tg)
     
     def refit(
@@ -103,6 +206,24 @@ class FunctionalTucker:
         inv_factors: Factors | None = None,
         tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0
     ) -> Self:
+        """Refits the `FunctionalTucker` to some new function. The function can be given as
+        a Tucker Tensor, array or callable corresponding to the given tensor grid
+        or inverse factors.
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        f : TuckerTensor | jax.Array | Callable
+        inv_factors : Factors | None, optional
+            if not provided, inverse factors are computed on the fly, by default None
+        tol : float | tuple[jax.Array  |  float, ...], optional
+            Cutoff tolerance for small singular values, by default 0.0
+
+        Returns
+        -------
+        FunctionalTucker
+            the fitted function in `FunctionalTucker` format
+        """
         return replace(self, core=self.elm.fit(tg, f, inv_factors=inv_factors, tol=tol).core)
         
     def divergence(
@@ -111,6 +232,22 @@ class FunctionalTucker:
         inv_factors: Factors | None = None, 
         tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0
     ) -> Self:
+        """Computes and refits the same Functional Tucker to the divergence.        
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        f : TuckerTensor | jax.Array | Callable
+        inv_factors : Factors | None, optional
+            if not provided, inverse factors are computed on the fly, by default None
+        tol : float | tuple[jax.Array  |  float, ...], optional
+            Cutoff tolerance for small singular values, by default 0.0
+
+        Returns
+        -------
+        FunctionalTucker
+            the divergence in `FunctionalTucker` format
+        """
         factors, partials = self.factors_and_partials(tg)
         if inv_factors is None:
             inv_factors = factors_pinv(factors, weights=tg.weights, tol=tol)
@@ -124,6 +261,22 @@ class FunctionalTucker:
         inv_factors: Factors | None = None, 
         tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0
     ) -> Self:
+        """Computes and refits the same Functional Tucker to the Laplace operation.        
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        f : TuckerTensor | jax.Array | Callable
+        inv_factors : Factors | None, optional
+            if not provided, inverse factors are computed on the fly, by default None
+        tol : float | tuple[jax.Array  |  float, ...], optional
+            Cutoff tolerance for small singular values, by default 0.0
+
+        Returns
+        -------
+        FunctionalTucker
+            the Laplace operation in `FunctionalTucker` format
+        """
         factors, partials = self.factors_and_partials(tg)
         if inv_factors is None:
             inv_factors = factors_pinv(factors, weights=tg.weights, tol=tol)
@@ -132,18 +285,34 @@ class FunctionalTucker:
         return replace(self, core=core)
     
     def grad(
-        self, 
-        tg: TensorGrid, 
-        inv_factors: Factors | None = None, 
+        self,
+        tg: TensorGrid,
+        inv_factors: Factors | None = None,
         tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0
     ) -> Self:
+        """Computes and refits the same Functional Tucker to the gradient.        
+
+        Parameters
+        ----------
+        tg : TensorGrid
+        f : TuckerTensor | jax.Array | Callable
+        inv_factors : Factors | None, optional
+            if not provided, inverse factors are computed on the fly, by default None
+        tol : float | tuple[jax.Array  |  float, ...], optional
+            Cutoff tolerance for small singular values, by default 0.0
+
+        Returns
+        -------
+        FunctionalTucker
+            the gradient operation in `FunctionalTucker` format
+        """
         factors, partials = self.factors_and_partials(tg)
         if inv_factors is None:
             inv_factors = factors_pinv(factors, weights=tg.weights, tol=tol)
 
         core = fit_grad(inv_factors, partials, self.core)
         return replace(self, core=core)
-    
+
 
 @overload
 def fit(inv_factors: Factors, f: jax.Array) -> Core: ...
@@ -154,33 +323,35 @@ def fit(inv_factors: Factors, f: TuckerTensor) -> Core: ...
 
 
 @overload
+def fit(inv_factors: Factors, f: FunctionalTucker, tg: TensorGrid) -> Core: ...
+
+
+@overload
 def fit(inv_factors: Factors, f: Callable, tg: TensorGrid) -> Core: ...
-
-
-# @overload
-# def fit(func_tucker: FunctionalTucker, F: Callable, tg: TensorGrid) -> Core: ...
-
-
-# @overload
-# def fit(func_tucker: FunctionalTucker, F: FunctionalTucker, core: Core, tg: TensorGrid) -> Core: ...
 
 
 def fit(
     inv_factors: Factors,
-    f: jax.Array | TuckerTensor | Callable,
+    f: jax.Array | TuckerTensor | FunctionalTucker | Callable,
     tg: TensorGrid | None = None
 ) -> Core:
     if tg is not None:
         if not callable(f):
             raise TypeError("`fit` requires a function is a tensor grid is provided.")
-        f = jnp.apply_along_axis(f, -1, tg.grid)
-        return fit_to_array(inv_factors, f)
+        if isinstance(f, FunctionalTucker):
+            tt = f.tt(tg)
+            return fit_to_tucker(inv_factors, tt)
+        else:
+            f = jnp.apply_along_axis(f, -1, tg.grid)
+            return fit_to_array(inv_factors, f)
     elif isinstance(f, TuckerTensor):
         return fit_to_tucker(inv_factors, f)
     elif isinstance(f, jax.Array):
         return fit_to_array(inv_factors, f)
     else:
-        raise NotImplementedError(f"Cannot fit TPELM to {type(f)}. Provide the right hand side as array or Tucker tensor.")
+        raise NotImplementedError(
+            f"Cannot fit TPELM to {type(f)}. Provide the right hand side as array or Tucker tensor."
+        )
 
 
 def fit_to_array(inv_factors: Factors, F: jax.Array) -> Core:
@@ -266,10 +437,9 @@ def fit_grad(inv_factors: Factors, partials: tuple[Factors, ...], core: Core) ->
     )
     d_cores = tuple(fit(inv_factors, p) for p in _partials)
     return jnp.stack(d_cores, axis=-1)
-    
+
 
 def _check_divergence_dim(partials: tuple[Factors, ...], core: Core) -> None:
     dims = len(partials)
     assert core.ndim == (dims + 1)
     assert core.shape[-1] == dims
-

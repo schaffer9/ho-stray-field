@@ -1,20 +1,22 @@
 import timeit
-import itertools
 from functools import partial
+from typing import Callable
 
 import pytest
-from quadax import quadgk
 
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
-from tpelm.base import fit, fit_divergence, fit_laplace, fit_grad
-from tpelm.tucker_tensor import TuckerTensor, tucker_dot
-from tpelm.gs import superpotential, fit_superpotential, superpotential_factors, merge_quad_info, GS
-from tpelm.magnetostatic import FTState, SPState, DomainState
+from tpelm.magnetostatic import DomainState, energy, stray_field, superpotential, fit_mag
 
 from .. import *
 from ..sources import flower_state, vortex_state, m_uniform
 from .utils import write_csv_row
+
+
+def compute_mag(tg: TensorGrid, m: Callable) -> jax.Array:
+    grid = tg.grid
+    M = jax.lax.map(jax.vmap(jax.vmap(m)), grid)  # map along last dim to save memory
+    return M
 
 
 @pytest.mark.functional
@@ -22,64 +24,71 @@ class TestEnergy:
     quadrature_points = 140
 
     def setup_class(self):
+        jax.config.update("jax_compilation_cache_dir", "/tmp/jax_test_cache")
         jax.config.update("jax_enable_x64", True)
 
     def teardown_class(self):
         jax.config.update("jax_enable_x64", False)
-        
 
+    @pytest.mark.parametrize("n", [10, 20, 40])
+    @pytest.mark.parametrize("k", [3, 4, 5, 6, 7])
+    @pytest.mark.parametrize("device", ["gpu", "cpu"])
+    def test_energy_uniform_cube(self, n, k, device, artifact_dir):
+        s = 46
+        try:
+            if device == "gpu" and not jax.devices("gpu"):
+                pytest.skip("GPU not available")
+        except RuntimeError:
+            pytest.skip("GPU not available")
 
-    def test_energy_uniform_cube(self, artifact_dir):
+        csv_file = artifact_dir / f"energy_uniform_{device}.csv"
+        grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
         
-        csv_file = artifact_dir / "sp_uniform.csv"
-        
-        #@partial(jax.jit, device=jax.devices("cpu")[0])
-        def _energy():
-            degree = 6
-            n = 39
-            tg_m = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3))
-            elm_m = BSpline(tg_m, degree=0)
-            tg_quad = tg_m.to_gauss(3)
-            inv_factors = elm_m.pinv(tg_quad)
-            # F = jnp.apply_along_axis(m_uniform, -1, tg_quad.grid)
-            F = jnp.apply_along_axis(m_uniform, -1, tg_quad.grid)
-            core_m = fit(inv_factors, F)
-            gs = GS.from_sinc_1_over_sqrtx(46, 1.9)
-            
-            tg = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
-            elm_sp = BSpline(tg, degree=degree)
-            tg_quad = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
-            #tg_quad = tg.to_gauss(5)
-            #inv_factors = elm_sp.pinv(tg_quad, alpha=1e-12)
-            inv_factors = elm_sp.pinv(tg_quad, tol=1e-12)
-
-            _, partials = elm_sp.factors_and_partials(tg_quad)
-            sp_factors, info = superpotential_factors(elm_m, tg_quad, tg_m, gs, 
-                                                      epsabs=1e-14, epsrel=0.0, order=31, max_ninter=200)
-            _core = fit_superpotential(inv_factors, sp_factors, core_m, gs)
-            _core = fit_divergence(inv_factors, partials, _core)
-            _core = fit_laplace(inv_factors, partials, _core)
-            core_h = fit_grad(inv_factors, partials, _core)
-            
-            factors_h = elm_sp.factors(tg_quad, mul_weights=True)
-            factors_m = elm_m.factors(tg_quad)
-            e = -1 / (16 * jnp.pi) * tucker_dot(
-                TuckerTensor(core_h, factors_h),
-                TuckerTensor(core_m, factors_m),
+        @partial(jax.jit, device=jax.devices(device)[0])
+        def setup(quad_grid: TensorGrid):
+            mag_tg = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3))
+            state = DomainState.init(
+                sp_elm=BSpline(grid, degree=k - 1),
+                mag_elm=BSpline(mag_tg, degree=0),
+                sp_quad_grid=quad_grid,
+                mag_quad_grid=mag_tg.to_gauss(1),
+                gs_terms=s,
+                gk_max_ninter=100
             )
-            return e, info
+            M = compute_mag(mag_tg.to_gauss(1), m_uniform)
+            mag = fit_mag(state, M)
+            return state, mag
         
-        e, info = _energy()
+        @partial(jax.jit, device=jax.devices(device)[0])
+        def solve(state: DomainState, mag) -> jax.Array:
+            sp, m = superpotential(state, mag)
+            h = stray_field(state, sp)
+            return energy(h, m, {0: quad_grid})
         
-        print(info)
-        print(e, jnp.abs(e - 1 / 6))
-        
-        assert False
+        quad_grid = grid.to_gauss(k)
+        solver, mag = setup(quad_grid)
+        runs = 1
+        setup_time = timeit.timeit(lambda: setup(quad_grid)[1][0].core.block_until_ready(), number=runs) / runs
+        e = solve(solver, mag)
+        runs = 10
+        run_time = timeit.timeit(lambda: solve(solver, mag).block_until_ready(), number=runs) / runs
 
+        data = {
+            "k": k,
+            "r": n,
+            "s": s,
+            "energy": e,
+            "error": jnp.abs(e - 1 / 6),
+            "setup_time": setup_time,
+            "run_time": run_time
+        }
+        write_csv_row(csv_file, data)
+        
     @pytest.mark.parametrize("n", [10, 20, 40, 80])
-    @pytest.mark.parametrize("k", [4, 5, 6, 7])
+    @pytest.mark.parametrize("k", [3, 4, 5, 6, 7])
     @pytest.mark.parametrize("device", ["gpu", "cpu"])
     def test_energy_flower_state(self, n, k, device, artifact_dir):
+        s = 46
         try:
             if device == "gpu" and not jax.devices("gpu"):
                 pytest.skip("GPU not available")
@@ -88,45 +97,91 @@ class TestEnergy:
 
         csv_file = artifact_dir / f"energy_flower_{device}.csv" 
         grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
+        
         @partial(jax.jit, device=jax.devices(device)[0])
-        #@jax.jit
         def setup(quad_grid: TensorGrid):
-            
-            solver = StrayFieldSolver.create(
-                BSpline(grid, degree=k-1),
-                quad_grid=quad_grid,
+            state = DomainState.init(
+                sp_elm=BSpline(grid, degree=k - 1),
+                sp_quad_grid=quad_grid,
+                gs_terms=s,
                 gk_max_ninter=n + 50
             )
-            return solver, solver.fit_mag(flower_state).tt
+            M = compute_mag(state.quad_grids[0], flower_state)
+            mag = fit_mag(state, M)
+            return state, mag
         
-        #@partial(jax.jit, device=jax.devices(device)[0])
-        @jax.jit
-        def solve(solver, mag):
-            mag = solver.fit_mag(mag)
-            return mag.energy()
+        @partial(jax.jit, device=jax.devices(device)[0])
+        def solve(state: DomainState, mag) -> jax.Array:
+            sp, m = superpotential(state, mag)
+            h = stray_field(state, sp)
+            return energy(h, m, {0: quad_grid})
         
-        #quad_grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
         runs = 1
-        setup_time = timeit.timeit(lambda: setup(quad_grid)[1].core.block_until_ready(), number=runs) / runs
+        setup_time = timeit.timeit(lambda: setup(quad_grid)[1][0].core.block_until_ready(), number=runs) / runs
         e = solve(solver, mag)
         runs = 10
         run_time = timeit.timeit(lambda: solve(solver, mag).block_until_ready(), number=runs) / runs
 
         data = {
             "k": k,
-            "knots": n,
+            "r": n,
+            "s": s,
             "energy": e,
             "setup_time": setup_time,
             "run_time": run_time
         }
         write_csv_row(csv_file, data)
 
+    @pytest.mark.parametrize("s", [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70])
+    def test_energy_flower_state_s(self, s, artifact_dir):
+        csv_file = artifact_dir / "energy_flower_s.csv"
+        n = 50
+        k = 10
+        grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
+        
+        @jax.jit
+        def setup(quad_grid: TensorGrid):
+            state = DomainState.init(
+                sp_elm=BSpline(grid, degree=k - 1),
+                sp_quad_grid=quad_grid,
+                gs_terms=s,
+                gk_max_ninter=150
+            )
+            M = compute_mag(state.quad_grids[0], flower_state)
+            mag = fit_mag(state, M)
+            return state, mag
+        
+        @jax.jit
+        def solve(state: DomainState, mag) -> jax.Array:
+            sp, m = superpotential(state, mag)
+            h = stray_field(state, sp)
+            return energy(h, m, {0: quad_grid})
+        
+        quad_grid = grid.to_gauss(k)
+        solver, mag = setup(quad_grid)
+        runs = 1
+        setup_time = timeit.timeit(lambda: setup(quad_grid)[1][0].core.block_until_ready(), number=runs) / runs
+        e = solve(solver, mag)
+        runs = 10
+        run_time = timeit.timeit(lambda: solve(solver, mag).block_until_ready(), number=runs) / runs
+
+        data = {
+            "k": k,
+            "r": n,
+            "s": s,
+            "energy": e,
+            "setup_time": setup_time,
+            "run_time": run_time
+        }
+        write_csv_row(csv_file, data)
+        
     @pytest.mark.parametrize("n", [10, 20, 40, 80])
-    @pytest.mark.parametrize("k", [4, 5, 6, 7])
-    @pytest.mark.parametrize("device", ["gpu"])
+    @pytest.mark.parametrize("k", [3, 4, 5, 6, 7])
+    @pytest.mark.parametrize("device", ["gpu", "cpu"])
     def test_energy_vortex_state(self, n, k, device, artifact_dir):
+        s = 46
         if device == "gpu" and not jax.devices("gpu"):
             pytest.skip("GPU not available")
 
@@ -135,28 +190,75 @@ class TestEnergy:
         
         @partial(jax.jit, device=jax.devices(device)[0])
         def setup(quad_grid: TensorGrid):
-            solver = StrayFieldSolver.create(
-                BSpline(grid, degree=k-1),
-                quad_grid=quad_grid,
+            state = DomainState.init(
+                sp_elm=BSpline(grid, degree=k - 1),
+                sp_quad_grid=quad_grid,
+                gs_terms=s,
                 gk_max_ninter=n + 50
             )
-            return solver, solver.fit_mag(vortex_state).tt
+            M = compute_mag(state.quad_grids[0], vortex_state)
+            mag = fit_mag(state, M)
+            return state, mag
         
         @partial(jax.jit, device=jax.devices(device)[0])
-        def solve(solver, mag):
-            mag = solver.fit_mag(mag)
-            return mag.energy()
+        def solve(state: DomainState, mag) -> jax.Array:
+            sp, m = superpotential(state, mag)
+            h = stray_field(state, sp)
+            return energy(h, m, {0: quad_grid})
         
-        #quad_grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(self.quadrature_points)
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
         runs = 1
-        setup_time = timeit.timeit(lambda: setup(quad_grid)[1].core.block_until_ready(), number=runs) / runs
+        setup_time = timeit.timeit(lambda: setup(quad_grid)[1][0].core.block_until_ready(), number=runs) / runs
         e = solve(solver, mag)
         runs = 10
         run_time = timeit.timeit(lambda: solve(solver, mag).block_until_ready(), number=runs) / runs
 
         data = {
+            "k": k,
+            "r": n,
+            "s": s,
+            "energy": e,
+            "setup_time": setup_time,
+            "run_time": run_time
+        }
+        write_csv_row(csv_file, data)
+
+    @pytest.mark.parametrize("s", [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70])
+    def test_energy_vortex_state_s(self, s, artifact_dir):
+        csv_file = artifact_dir / "energy_vortex_s.csv"
+        n = 50
+        k = 10
+        grid = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
+        
+        @jax.jit
+        def setup(quad_grid: TensorGrid):
+            state = DomainState.init(
+                sp_elm=BSpline(grid, degree=k - 1),
+                sp_quad_grid=quad_grid,
+                gs_terms=s,
+                gk_max_ninter=150
+            )
+            M = compute_mag(state.quad_grids[0], vortex_state)
+            mag = fit_mag(state, M)
+            return state, mag
+        
+        @jax.jit
+        def solve(state: DomainState, mag) -> jax.Array:
+            sp, m = superpotential(state, mag)
+            h = stray_field(state, sp)
+            return energy(h, m, {0: quad_grid})
+        
+        quad_grid = grid.to_gauss(k)
+        solver, mag = setup(quad_grid)
+        runs = 1
+        setup_time = timeit.timeit(lambda: setup(quad_grid)[1][0].core.block_until_ready(), number=runs) / runs
+        e = solve(solver, mag)
+        runs = 10
+        run_time = timeit.timeit(lambda: solve(solver, mag).block_until_ready(), number=runs) / runs
+
+        data = {
+            "S": s,
             "k": k,
             "knots": n,
             "energy": e,
@@ -165,68 +267,149 @@ class TestEnergy:
         }
         write_csv_row(csv_file, data)
 
-    def test_two_layer(self, artifact_dir):
-        csv_file = artifact_dir / f"two_layer.csv"
-        k = 6
-        MS1 = 1.0
-        MS2 = 2.0
-        mag1 = lambda x: MS1 * vortex_state(x)
-        def mag2(x):
-            m = jnp.zeros_like(x).at[..., 2].set(-1).at[..., 1].set(0.5)
-            m = m / jnp.linalg.norm(m, axis=-1, keepdims=True)
-            return MS2 * m
-       
-        grid1 = TensorGrid(
-            jnp.linspace(-0.5, 0.5, 15),
-            jnp.linspace(-0.5, 0.5, 15),
-            jnp.linspace(-0.05, 0.0, 3),
+    @pytest.mark.parametrize("n", [20, 40, 60])
+    @pytest.mark.parametrize("k", [4, 5, 6, 7, 8])
+    @pytest.mark.parametrize("device", ["gpu", "cpu"])
+    def test_energy_vortex_thin_film(self, n, k, device, artifact_dir):
+        s = 46
+        if device == "gpu" and not jax.devices("gpu"):
+            pytest.skip("GPU not available")
+
+        csv_file = artifact_dir / f"energy_vortex_thin_film_{device}.csv" 
+        grid = TensorGrid(
+            jnp.linspace(-0.5, 0.5, n),
+            jnp.linspace(-0.5, 0.5, n),
+            jnp.linspace(-0.05, 0.05, n // 4)
         )
-        grid2 = TensorGrid(
-            jnp.linspace(-0.5, 0.5, 16),
-            jnp.linspace(-0.5, 0.5, 16),
-            jnp.linspace(0.0, 0.05, 3),
-        )
-        grid3 = TensorGrid(
-            jnp.linspace(-0.5, 0.5, 17),
-            jnp.linspace(-0.5, 0.5, 17),
-            jnp.linspace(-0.05, 0.0, 3),
-        )
-        grid4 = TensorGrid(
-            jnp.linspace(-0.5, 0.5, 18),
-            jnp.linspace(-0.5, 0.5, 18),
-            jnp.linspace(0.0, 0.05, 3),
-        )
-        sp_elm1 = BSpline(grid1, degree=k-1)
-        sp_elm2 = BSpline(grid2, degree=k-1)
-        mag_elm1 = BSpline(grid3, degree=k-1)
-        mag_elm2 = BSpline(grid4, degree=k-1)
         
-        solvers = [
-            StrayFieldSolver.create(elm, mag_elm, gk_max_ninter=30)
-            for elm, mag_elm in itertools.product([sp_elm1, sp_elm2], [mag_elm1, mag_elm2])
-        ]
-        mags = [solver.fit_mag(mag) for solver, mag in zip(solvers, [mag1, mag2] * 2)]
-        # energies = jnp.asarray([m.energy() for m in mags])
-        # print("energies", energies)
-        # energy = jnp.sum(jnp.asarray([m.energy() for m in mags]))
-        # print("energy", energy)
-        def print_tucker(tt):
-            shapes = tree.map(lambda t: t.shape, tt)
-            print(shapes)
-        stray_fields = [m.stray_field() for m in mags]
-        def _energy(stray_field: FittedFT, mag: FittedFT, quad_grid: TensorGrid) -> jax.Array:
-            factors = mag.factors(quad_grid, mul_weights=True)
-            sf_factors = stray_field.factors(quad_grid)
-            #weighted_factors = tuple(w[:, *([None for _ in f.shape[1:]])] * f for w, f in zip(weights, factors))
-            m = TuckerTensor(mag.tt.core, factors)
-            h = TuckerTensor(stray_field.tt.core, sf_factors)
-            print_tucker(m)
-            print_tucker(h)
-            return -1 / (16 * jnp.pi) * tucker_dot(h, m)
-        e1 = _energy(stray_fields[0], mags[0], grid3.to_gauss(k))
-        e2 = _energy(stray_fields[1], mags[0], grid3.to_gauss(k))
-        e3 = _energy(stray_fields[2], mags[1], grid4.to_gauss(k))
-        e4 = _energy(stray_fields[3], mags[1], grid4.to_gauss(k))
-        print("energies", e1, e2, e3, e4)
-        print("energy", e1 + e2 + e3 + e4)
-        assert False
+        @partial(jax.jit, device=jax.devices(device)[0])
+        def setup(quad_grid: TensorGrid):
+            state = DomainState.init(
+                sp_elm=BSpline(grid, degree=k - 1),
+                sp_quad_grid=quad_grid,
+                gs_terms=s,
+                gk_max_ninter=n + 50
+            )
+            mag = fit_mag(state, vortex_state)
+            return state, mag
+        
+        @partial(jax.jit, device=jax.devices(device)[0])
+        def solve(state: DomainState, mag) -> jax.Array:
+            sp, m = superpotential(state, mag)
+            h = stray_field(state, sp)
+            return energy(h, m, {0: quad_grid})
+        
+        quad_grid = grid.to_gauss(k)
+        solver, mag = setup(quad_grid)
+        runs = 1
+        setup_time = timeit.timeit(lambda: setup(quad_grid)[1][0].core.block_until_ready(), number=runs) / runs
+        e = solve(solver, mag)
+        runs = 10
+        run_time = timeit.timeit(lambda: solve(solver, mag).block_until_ready(), number=runs) / runs
+
+        data = {
+            "k": k,
+            "r1": n,
+            "r2": n,
+            "r3": n // 4,
+            "s": s,
+            "energy": e,
+            "setup_time": setup_time,
+            "run_time": run_time
+        }
+        write_csv_row(csv_file, data)
+
+    @pytest.mark.parametrize("n", [20, 40, 60])
+    @pytest.mark.parametrize("k", [4, 5, 6, 7, 8])
+    @pytest.mark.parametrize("device", ["gpu", "cpu"])
+    def test_energy_two_layer(self, n, k, device, artifact_dir):
+        r"""This test computes the energy for two stacked thin films
+        :math:`A=[-0.4, 0.5]\times[-0.5, 0.5]\times[0, 0.05]` and 
+        :math:`B=[-0.5, 0.4]\times[-0.5, 0.5]\times[-0.05, 0]`
+        with the layer A having vortex magnetization with Ms=1 and B having
+        uniform magnetization in x with Ms=2.
+        """
+        s = 46
+        if device == "gpu" and not jax.devices("gpu"):
+            pytest.skip("GPU not available")
+
+        csv_file = artifact_dir / f"energy_two_layer_{device}.csv" 
+        grid_a = TensorGrid(
+            jnp.linspace(-0.4, 0.5, n),
+            jnp.linspace(-0.5, 0.5, n),
+            jnp.linspace(0.0, 0.05, n // 4)
+        )
+        grid_b = TensorGrid(
+            jnp.linspace(-0.5, 0.4, n),
+            jnp.linspace(-0.5, 0.5, n),
+            jnp.linspace(-0.05, 0.0, n // 4)
+        )
+        
+        @partial(jax.jit, device=jax.devices(device)[0])
+        def setup(quad_grid: dict[int, TensorGrid]):
+            mag_grid_a = TensorGrid(
+                jnp.linspace(-0.4, 0.5, 2),
+                jnp.linspace(-0.5, 0.5, 2),
+                jnp.linspace(0.0, 0.05, 2)
+            )
+            mag_grid_b = TensorGrid(
+                jnp.linspace(-0.5, 0.4, 2),
+                jnp.linspace(-0.5, 0.5, 2),
+                jnp.linspace(-0.05, 0.0, 2)
+            )
+            
+            state = DomainState.init(
+                sp_elm={
+                    0: BSpline(grid_a, degree=k - 1),
+                    1: BSpline(grid_b, degree=k - 1),
+                },
+                mag_elm={
+                    0: BSpline(mag_grid_a, degree=0),
+                    1: BSpline(mag_grid_b, degree=0),
+                },
+                mag_quad_grid={0: mag_grid_a.to_gauss(1), 1: mag_grid_b.to_gauss(1)},
+                sp_quad_grid=quad_grid,
+                gs_terms=s,
+                gk_max_ninter=50
+            )
+            _m1 = jnp.array([0.2, 0.5, 0.3])
+            _m2 = jnp.array([-1, -0.3, 0.0])
+            _m1 = _m1 / jnp.linalg.norm(_m1)
+            _m2 = _m2 / jnp.linalg.norm(_m2) * 2
+            m1 = lambda x: jnp.zeros_like(x).at[..., :].set(_m1)
+            m2 = lambda x: jnp.zeros_like(x).at[..., :].set(_m2)
+            _mags = {
+                0: m1,
+                1: m2
+            }
+            mag = fit_mag(state, _mags)
+            return state, mag
+        
+        @partial(jax.jit, device=jax.devices(device)[0])
+        def solve(state: DomainState, mag) -> jax.Array:
+            sp, m = superpotential(state, mag)
+            h = stray_field(state, sp)
+            return energy(h, m, quad_grid)
+        
+        quad_grid = {
+            0: grid_a.to_gauss(k),
+            1: grid_b.to_gauss(k)
+        }
+        solver, mag = setup(quad_grid)
+        runs = 1
+        setup_time = timeit.timeit(lambda: setup(quad_grid)[1][0].core.block_until_ready(), number=runs) / runs
+        e = solve(solver, mag)
+        runs = 10
+        run_time = timeit.timeit(lambda: solve(solver, mag).block_until_ready(), number=runs) / runs
+
+        data = {
+            "k": k,
+            "r1": n,
+            "r2": n,
+            "r3": n // 2,
+            "s": s,
+            "energy": e,
+            "setup_time": setup_time,
+            "run_time": run_time
+        }
+        write_csv_row(csv_file, data)

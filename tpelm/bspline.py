@@ -7,14 +7,29 @@ from .base import TPELM
 from .tensor_grid import TensorGrid
 
 
-@partial(jax.jit, static_argnames=("degree", "extrapolate"))
-def eval_spline(x: jax.Array, grid: jax.Array, coefs: jax.Array, degree: int = 3, extrapolate: bool = False):
+def eval_spline(x: jax.Array, grid: jax.Array, coeffs: jax.Array, degree: int = 3, extrapolate: bool = False) -> jax.Array:
+    """Evaluates the B-Spline for the provided coefficients.
+
+    Parameters
+    ----------
+    x : jax.Array
+    grid : jax.Array
+    coefs : jax.Array
+    degree : int, optional
+        by default 3
+    extrapolate : bool, optional
+        by default False
+
+    Returns
+    -------
+    jax.Array
+    """
     n = grid.shape[-1] - degree - 1 + 2 * degree
         
-    assert coefs.shape[-1] == n, f"B-Spline has {n} basis functions! Only {coefs.shape[-1]} coefficients given."
+    assert coeffs.shape[-1] == n, f"B-Spline has {n} basis functions! Only {coeffs.shape[-1]} coefficients given."
     
     y = basis(x, grid, degree, extrapolate=extrapolate)
-    return jnp.sum(y * coefs, axis=-1)
+    return jnp.sum(y * coeffs, axis=-1)
 
 
 def _bspline_basis_deboor(x, t, degree, extrapolate):
@@ -60,8 +75,26 @@ def _bspline_basis_deboor(x, t, degree, extrapolate):
         return jnp.asarray(jnp.where((x < t[0]) | (t[-1] < x), jnp.zeros_like(basis), basis))
 
 
-@partial(jax.jit, static_argnames=("degree", "extrapolate"))
 def basis(x: jax.Array, grid: jax.Array, degree: int = 3, extrapolate: bool = False) -> jax.Array:
+    """Computes the basis of the B-spline at `x` with de Boor's algorithm.
+
+    Parameters
+    ----------
+    x : jax.Array
+    grid : jax.Array
+        knot locations; can be clamped
+    degree : int, optional
+        by default 3
+    extrapolate : bool, optional
+        by default False
+
+    Returns
+    -------
+    jax.Array
+        Basis
+    """
+    x = jnp.asarray(x)
+    
     def _basis(x, grid):
         return _bspline_basis_deboor(x, grid, degree, extrapolate)
     
@@ -74,6 +107,8 @@ def basis(x: jax.Array, grid: jax.Array, degree: int = 3, extrapolate: bool = Fa
          meta_fields=["degree"])
 @dataclasses.dataclass
 class BSpline(TPELM):
+    """Multilinear Tensor Product ELM based on B-splines.
+    """
     grid: TensorGrid
     degree: int = 3
 
