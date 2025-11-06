@@ -13,7 +13,7 @@ Superpotential: TypeAlias = FunctionalTucker
 Magnetization: TypeAlias = FunctionalTucker
 ScalarPotential: TypeAlias = FunctionalTucker
 StrayField: TypeAlias = FunctionalTucker
-F = jax.Array | TuckerTensor | Callable | FunctionalTucker
+F = jax.Array | TuckerTensor | Callable[[jax.Array], jax.Array] | FunctionalTucker
 
 
 class FTState(NamedTuple):
@@ -434,7 +434,11 @@ def energy(h: dict[int, StrayField], m: dict[int, Magnetization], quad_grids: di
     return jnp.sum(jnp.asarray([_energy(h[i], m[i], quad_grids[i]) for i in h.keys()]))
 
 
-def solve_energy(state: DomainState, m: RawMag | dict[int, RawMag]) -> jax.Array:
+def solve_energy(
+    state: DomainState, 
+    m: RawMag | dict[int, RawMag], 
+    quad_grid: TensorGrid | dict[int, TensorGrid] | None
+) -> jax.Array:
     """Solves for the magnetostatic energy for the provided magnetization.
 
     Parameters
@@ -442,16 +446,23 @@ def solve_energy(state: DomainState, m: RawMag | dict[int, RawMag]) -> jax.Array
     state : DomainState
     m : RawMag | dict[int, RawMag]
         magnetization
-
+    quad_grid : TensorGrid | dict[int, TensorGrid] | None
+        quadrature grid, defaults to None
     Returns
     -------
     jax.Array
         Energy
     """
+    if quad_grid is None:
+        quad_grid = state.quad_grids
+    
+    if not isinstance(quad_grid, dict):
+        quad_grid = {0: quad_grid}
+        
     mag = fit_mag(state, m)
     sp = superpotential(state, mag)
     h = stray_field(state, sp)
-    return energy(h, mag, state.quad_grids)
+    return energy(h, mag, quad_grid)
 
 
 def _superpotential(state: SPState, m: FunctionalTucker) -> Superpotential:

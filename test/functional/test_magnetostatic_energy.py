@@ -6,7 +6,7 @@ import pytest
 
 from tpelm.bspline import BSpline
 from tpelm.tensor_grid import TensorGrid
-from tpelm.magnetostatic import DomainState, energy, stray_field, superpotential, fit_mag
+from tpelm.magnetostatic import DomainState, solve_energy, stray_field, superpotential, fit_mag
 
 from .. import *
 from ..sources import flower_state, vortex_state, m_uniform
@@ -61,9 +61,7 @@ class TestEnergy:
         
         @partial(jax.jit, device=jax.devices(device)[0])
         def solve(state: DomainState, mag) -> jax.Array:
-            sp, m = superpotential(state, mag)
-            h = stray_field(state, sp)
-            return energy(h, m, {0: quad_grid})
+            return solve_energy(state, mag, {0: quad_grid})
         
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
@@ -112,9 +110,7 @@ class TestEnergy:
         
         @partial(jax.jit, device=jax.devices(device)[0])
         def solve(state: DomainState, mag) -> jax.Array:
-            sp, m = superpotential(state, mag)
-            h = stray_field(state, sp)
-            return energy(h, m, {0: quad_grid})
+            return solve_energy(state, mag, {0: quad_grid})
         
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
@@ -155,9 +151,7 @@ class TestEnergy:
         
         @jax.jit
         def solve(state: DomainState, mag) -> jax.Array:
-            sp, m = superpotential(state, mag)
-            h = stray_field(state, sp)
-            return energy(h, m, {0: quad_grid})
+            return solve_energy(state, mag, {0: quad_grid})
         
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
@@ -202,9 +196,7 @@ class TestEnergy:
         
         @partial(jax.jit, device=jax.devices(device)[0])
         def solve(state: DomainState, mag) -> jax.Array:
-            sp, m = superpotential(state, mag)
-            h = stray_field(state, sp)
-            return energy(h, m, {0: quad_grid})
+            return solve_energy(state, mag, {0: quad_grid})
         
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
@@ -245,9 +237,7 @@ class TestEnergy:
         
         @jax.jit
         def solve(state: DomainState, mag) -> jax.Array:
-            sp, m = superpotential(state, mag)
-            h = stray_field(state, sp)
-            return energy(h, m, {0: quad_grid})
+            return solve_energy(state, mag, {0: quad_grid})
         
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
@@ -295,9 +285,7 @@ class TestEnergy:
         
         @partial(jax.jit, device=jax.devices(device)[0])
         def solve(state: DomainState, mag) -> jax.Array:
-            sp, m = superpotential(state, mag)
-            h = stray_field(state, sp)
-            return energy(h, m, {0: quad_grid})
+            return solve_energy(state, mag, {0: quad_grid})
         
         quad_grid = grid.to_gauss(k)
         solver, mag = setup(quad_grid)
@@ -387,9 +375,7 @@ class TestEnergy:
         
         @partial(jax.jit, device=jax.devices(device)[0])
         def solve(state: DomainState, mag) -> jax.Array:
-            sp, m = superpotential(state, mag)
-            h = stray_field(state, sp)
-            return energy(h, m, quad_grid)
+            return solve_energy(state, mag, quad_grid)
         
         quad_grid = {
             0: grid_a.to_gauss(k),

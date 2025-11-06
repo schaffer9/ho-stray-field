@@ -70,7 +70,7 @@ class TPELM(abc.ABC):
         ----------
         tg : TensorGrid
         tol : float | tuple[float, ...], optional
-            Cutoff tolerance for small singular values, by default 0.0
+            cutoff tolerance for small singular values, by default 0.0
 
         Returns
         -------
@@ -122,7 +122,7 @@ class TPELM(abc.ABC):
         inv_factors : Factors | None, optional
             if not provided, inverse factors are computed on the fly, by default None
         tol : float | tuple[jax.Array  |  float, ...], optional
-            Cutoff tolerance for small singular values, by default 0.0
+            cutoff tolerance for small singular values, by default 0.0
 
         Returns
         -------
@@ -217,7 +217,7 @@ class FunctionalTucker:
         inv_factors : Factors | None, optional
             if not provided, inverse factors are computed on the fly, by default None
         tol : float | tuple[jax.Array  |  float, ...], optional
-            Cutoff tolerance for small singular values, by default 0.0
+            cutoff tolerance for small singular values, by default 0.0
 
         Returns
         -------
