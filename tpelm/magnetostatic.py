@@ -118,8 +118,8 @@ class SPState(NamedTuple):
         target_quad_grid: TensorGrid | int | None = None,
         gs_terms: int = 46,
         gs_coeff: float = 1.9,
-        gk_epsabs: float = 1e-12,
-        gk_epsrel: float = 0.0,
+        gk_epsabs: float = 1e-13,
+        gk_epsrel: float = 1e-16,
         gk_order: int = 31,
         gk_max_ninter: int = 150,
         sp_pinv_tol: float | tuple[float, ...] = 0.0,
@@ -235,8 +235,8 @@ class DomainState(NamedTuple):
         target_quad_grid: TensorGrid | dict[int, TensorGrid] | None = None,
         gs_terms: int = 46,
         gs_coeff: float = 1.9,
-        gk_epsabs: float = 1e-14,
-        gk_epsrel: float = 0.0,
+        gk_epsabs: float = 1e-13,
+        gk_epsrel: float = 1e-16,
         gk_order: int = 31,
         gk_max_ninter: int = 150,
         sp_pinv_tol: float | tuple[float, ...] | dict[int, float | tuple[float, ...]] = 0.0,
@@ -437,7 +437,7 @@ def energy(h: dict[int, StrayField], m: dict[int, Magnetization], quad_grids: di
 def solve_energy(
     state: DomainState, 
     m: RawMag | dict[int, RawMag], 
-    quad_grid: TensorGrid | dict[int, TensorGrid] | None
+    quad_grid: TensorGrid | dict[int, TensorGrid] | None = None
 ) -> jax.Array:
     """Solves for the magnetostatic energy for the provided magnetization.
 

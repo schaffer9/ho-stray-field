@@ -91,7 +91,7 @@ class TestEnergy:
                     sp_elm=BSpline(grid, degree=k - 1),
                     sp_quad_grid=quad_grid,
                     gs_terms=s,
-                    gk_max_ninter=n + 50
+                    gk_max_ninter=100
                 )
                 M = compute_mag(state.quad_grids[0], flower_state)
                 mag = fit_mag(state, M)
@@ -133,7 +133,7 @@ class TestEnergy:
                     sp_elm=BSpline(grid, degree=k - 1),
                     sp_quad_grid=quad_grid,
                     gs_terms=s,
-                    gk_max_ninter=150
+                    gk_max_ninter=100
                 )
                 M = compute_mag(state.quad_grids[0], flower_state)
                 mag = fit_mag(state, M)
@@ -176,7 +176,7 @@ class TestEnergy:
                     sp_elm=BSpline(grid, degree=k - 1),
                     sp_quad_grid=quad_grid,
                     gs_terms=s,
-                    gk_max_ninter=n + 50
+                    gk_max_ninter=100
                 )
                 M = compute_mag(state.quad_grids[0], vortex_state)
                 mag = fit_mag(state, M)
@@ -218,7 +218,7 @@ class TestEnergy:
                     sp_elm=BSpline(grid, degree=k - 1),
                     sp_quad_grid=quad_grid,
                     gs_terms=s,
-                    gk_max_ninter=150
+                    gk_max_ninter=100
                 )
                 M = compute_mag(state.quad_grids[0], vortex_state)
                 mag = fit_mag(state, M)
@@ -264,7 +264,7 @@ class TestEnergy:
                     sp_elm=BSpline(grid, degree=k - 1),
                     sp_quad_grid=quad_grid,
                     gs_terms=s,
-                    gk_max_ninter=n + 50
+                    gk_max_ninter=100
                 )
                 mag = fit_mag(state, vortex_state)
                 return state, mag
@@ -342,7 +342,7 @@ class TestEnergy:
                     mag_quad_grid={0: mag_grid_a.to_gauss(1), 1: mag_grid_b.to_gauss(1)},
                     sp_quad_grid=quad_grid,
                     gs_terms=s,
-                    gk_max_ninter=50
+                    gk_max_ninter=100
                 )
                 _m1 = jnp.array([0.2, 0.5, 0.3])
                 _m2 = jnp.array([-1, -0.3, 0.0])

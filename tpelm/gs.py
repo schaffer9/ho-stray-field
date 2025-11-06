@@ -73,6 +73,7 @@ def superpotential_factors(
     quad_tg: TensorGrid,
     gs: GS,
     batch_size: int | None = None,
+    max_ninter=50,
     **kwargs
 ) -> tuple[tuple[Factors, ...], QuadratureInfo]:
     """Computes the factor matrices for :math:`|x|` for all `alpha` in the 
@@ -90,8 +91,11 @@ def superpotential_factors(
     gs : GS
     batch_size : int | None, optional
         if provided performs serial computation with this batch size, by default None
+    max_ninter : int
+        maximum number of intervals for the adaptive quadrature. Note that this is added 
+        to the number of intervals within `quad_tg`.
     kwargs : Any
-        further kwargs for the addaptive quadrature
+        further kwargs for the adaptive quadrature
 
     Returns
     -------
@@ -104,7 +108,8 @@ def superpotential_factors(
             def b(y):
                 return elm.basis(y, mode=mode)
             interval = quad_tg[mode]
-            I, info = f(b, target, interval, alpha, **kwargs)
+            _max_ninter = interval.shape[0] + max_ninter
+            I, info = f(b, target, interval, alpha, max_ninter=_max_ninter, **kwargs)
             
             return I, info
         
