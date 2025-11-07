@@ -42,16 +42,16 @@ class GS(NamedTuple):
         return cls(*sinc_quad_1_over_sqrtx(rank, c0))
 
 
-def _quad(g, x, interval, alpha, stds: int = 2, **kwargs):
+def _quad(g, x, interval, alpha, stds: int = 4, **kwargs):
     s = jnp.sqrt(1 / (2 * jnp.maximum(alpha, 1.0)))
     lb, ub = jnp.min(interval), jnp.max(interval)
     gaussian_interval = jnp.linspace(-s * stds, s * stds, 2 * stds + 1) + x
     _interval = jnp.sort(jnp.concatenate([interval, gaussian_interval]))
     _interval = jnp.clip(_interval, lb, ub)
-    return quadgk(g, _interval, **kwargs)
+    return quadcc(g, _interval, **kwargs)
 
 
-def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
+def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 4, **kwargs):
     def g(y):
         r = (x - y) ** 2
         return jnp.exp(-alpha * r) * basis1d(y)
@@ -59,7 +59,7 @@ def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
     return _quad(g, x, interval, alpha, stds=stds, **kwargs)
 
 
-def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 2, **kwargs):
+def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 4, **kwargs):
     def g(y):
         r = (x - y) ** 2
         return r * jnp.exp(-alpha * r) * basis1d(y)
