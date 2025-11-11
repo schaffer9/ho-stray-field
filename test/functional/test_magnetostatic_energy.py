@@ -344,7 +344,7 @@ class TestEnergy:
                     gs_terms=s,
                     gk_max_ninter=100
                 )
-                _m1 = jnp.array([0.2, 0.5, 0.3])
+                _m1 = jnp.array([0.4, 1, 0.6])
                 _m2 = jnp.array([-1, -0.3, 0.0])
                 _m1 = _m1 / jnp.linalg.norm(_m1)
                 _m2 = _m2 / jnp.linalg.norm(_m2) * 2

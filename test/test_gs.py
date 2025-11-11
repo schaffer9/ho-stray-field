@@ -31,7 +31,7 @@ class TestIntegrateGS(JaxTestCase):
             b = bspline.basis(y, mode=0)
             return b
         
-        I, info = integrate_gs_term(b1, 0.1, t, 100000, epsabs=1e-13, epsrel=0.0, order=31, max_ninter=50)
+        I, info = integrate_gs_term(b1, 0.1, t, 100000, epsabs=1e-13, epsrel=0.0, order=31, max_ninter=150, stds=2)
         self.assertEqual(I.shape, (7,))
         self.assertTrue(info.err < 1e-13)
 
@@ -43,7 +43,7 @@ class TestIntegrateGS(JaxTestCase):
             b = bspline.basis(y, mode=0)
             return b
         
-        I, info = integrate_r2_gs_term(b1, 0.1, t, 1000000, epsabs=1e-13, epsrel=0.0, order=31, max_ninter=50)
+        I, info = integrate_r2_gs_term(b1, 0.1, t, 1000000, epsabs=1e-13, epsrel=0.0, order=31, max_ninter=50, stds=2)
         self.assertEqual(I.shape, (7,))
         self.assertTrue(info.err < 1e-13)
 

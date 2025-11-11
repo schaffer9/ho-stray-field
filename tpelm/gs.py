@@ -1,4 +1,4 @@
-from typing import NamedTuple, Self
+from typing import NamedTuple, Self, Callable
 
 from quadax import quadgk, quadts, quadcc
 from quadax.utils import QuadratureInfo
@@ -48,7 +48,7 @@ def _quad(g, x, interval, alpha, stds: int = 4, **kwargs):
     gaussian_interval = jnp.linspace(-s * stds, s * stds, 2 * stds + 1) + x
     _interval = jnp.sort(jnp.concatenate([interval, gaussian_interval]))
     _interval = jnp.clip(_interval, lb, ub)
-    return quadcc(g, _interval, **kwargs)
+    return quadgk(g, _interval, **kwargs)
 
 
 def integrate_gs_term(basis1d, x, interval, alpha, stds: int = 4, **kwargs):
@@ -67,6 +67,7 @@ def integrate_r2_gs_term(basis1d, x, interval, alpha, stds: int = 4, **kwargs):
     return _quad(g, x, interval, alpha, stds=stds, **kwargs)
 
 
+@partial(jax.jit, static_argnames=("batch_size", "max_ninter", "order"))
 def superpotential_factors(
     elm: TPELM,
     target_tg: TensorGrid,
@@ -74,7 +75,9 @@ def superpotential_factors(
     gs: GS,
     batch_size: int | None = None,
     max_ninter=50,
-    **kwargs
+    epsabs: float = 1e-13,
+    epsrel: float = 0.0,
+    order: int = 31,
 ) -> tuple[tuple[Factors, ...], QuadratureInfo]:
     """Computes the factor matrices for :math:`|x|` for all `alpha` in the 
     Gaussian sum approximation `gs` for all targets on the provided tensor grid.
@@ -93,9 +96,11 @@ def superpotential_factors(
         if provided performs serial computation with this batch size, by default None
     max_ninter : int
         maximum number of intervals for the adaptive quadrature. Note that this is added 
-        to the number of intervals within `quad_tg`.
-    kwargs : Any
-        further kwargs for the adaptive quadrature
+        to the number of intervals within `quad_tg`; see `quadgk` from `quadax`
+    epsabs, epsrel : float
+        Absolute and relative error tolerance; see `quadgk` from `quadax`
+    order : int
+        Order of local integration rule, default is 31; see `quadgk` from `quadax`
 
     Returns
     -------
@@ -109,7 +114,7 @@ def superpotential_factors(
                 return elm.basis(y, mode=mode)
             interval = quad_tg[mode]
             _max_ninter = interval.shape[0] + max_ninter
-            I, info = f(b, target, interval, alpha, max_ninter=_max_ninter, **kwargs)
+            I, info = f(b, target, interval, alpha, max_ninter=_max_ninter, epsabs=epsabs, epsrel=epsrel, order=order)
             
             return I, info
         
