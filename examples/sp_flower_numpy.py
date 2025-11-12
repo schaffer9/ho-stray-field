@@ -1,4 +1,8 @@
 
+"""In this script the superpotential is accurately computed with adaptive
+Gauss-Konrod quadrature for the flower state magnetization.
+"""
+
 import numpy as np
 from scipy.integrate import nquad
 import multiprocessing
@@ -39,7 +43,7 @@ def sp_for_flower_with_np(targets):
     return np.asarray(sp), np.asarray(max_err)
 
 
-t = np.linspace(-0.5, 0.5, 5)
+t = np.linspace(-0.5, 0.5, 10)
 targets = np.stack(np.meshgrid(t, t, t, indexing="ij"), axis=-1)
 sp, error = sp_for_flower_with_np(targets)
 
