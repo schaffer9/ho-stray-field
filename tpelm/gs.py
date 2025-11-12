@@ -150,10 +150,8 @@ def fit_superpotential(
     -------
     Core
     """
-    cores = jnp.asarray([
-        [fit(inv_factors, TuckerTensor(core, tuple(factors))) for factors in zip(*alpha_factors)]
-        for alpha_factors in factors_superpot
-    ])
+    cores = jnp.asarray([jax.vmap(lambda f: fit(inv_factors, TuckerTensor(core, f)))(fac) 
+                         for fac in factors_superpot])
     cores = gs.omega[None, :, *[None for _ in cores.shape[2:]]] * cores
     core = jnp.sum(cores, axis=(0, 1))
     return core
@@ -174,10 +172,8 @@ def superpotential(
     -------
     jax.Array
     """
-    sp = jnp.asarray([
-        [TuckerTensor(core, tuple(factors)).to_tensor() for factors in zip(*alpha_factors)]
-        for alpha_factors in factors_superpot
-    ])
+    sp = jnp.asarray([jax.vmap(lambda f: TuckerTensor(core, tuple(f)).to_tensor())(fac) 
+                      for fac in factors_superpot])
     sp = gs.omega[None, :, *[None for _ in sp.shape[2:]]] * sp
     sp = jnp.sum(sp, axis=(0, 1))
     return sp
@@ -190,3 +186,87 @@ def merge_quad_info(*infos: QuadratureInfo) -> QuadratureInfo:
         status=jnp.max(jnp.asarray([jnp.max(i.status) for i in infos])),  # type: ignore
         info=None
     )
+
+
+@partial(jax.jit, static_argnames=("batch_size", "max_ninter", "order"))
+def newtonpotential_factors(
+    elm: TPELM,
+    target_tg: TensorGrid,
+    quad_tg: TensorGrid,
+    gs: GS,
+    batch_size: int | None = None,
+    max_ninter=50,
+    epsabs: float = 1e-13,
+    epsrel: float = 0.0,
+    order: int = 31,
+) -> tuple[tuple[Factors, ...], QuadratureInfo]:
+    """Computes the factor matrices for :math:`|x|` for all `alpha` in the 
+    Gaussian sum approximation `gs` for the newton potential for all targets on the provided tensor grid.
+    `quad_tg` specifies the integration domain with optional breakpoints for the 
+    addaptive quadrature.
+
+    Parameters
+    ----------
+    elm : TPELM
+    target_tg : TensorGrid
+        targets at which the integrals are evaluated
+    quad_tg : TensorGrid
+        integration domain with optional breakpoints
+    gs : GS
+    batch_size : int | None, optional
+        if provided performs serial computation with this batch size, by default None
+    max_ninter : int
+        maximum number of intervals for the adaptive quadrature. Note that this is added 
+        to the number of intervals within `quad_tg`; see `quadgk` from `quadax`
+    epsabs, epsrel : float
+        Absolute and relative error tolerance; see `quadgk` from `quadax`
+    order : int
+        Order of local integration rule, default is 31; see `quadgk` from `quadax`
+
+    Returns
+    -------
+    tuple[tuple[Factors, ...], QuadratureInfo]
+    """
+    modes = list(range(quad_tg.dim))
+
+    def _integrate(f, alpha: jax.Array, mode: int):
+        def integrate_target(target):
+            def b(y):
+                return elm.basis(y, mode=mode)
+            interval = quad_tg[mode]
+            _max_ninter = interval.shape[0] + max_ninter
+            I, info = f(b, target, interval, alpha, max_ninter=_max_ninter, epsabs=epsabs, epsrel=epsrel, order=order)
+            
+            return I, info
+        
+        targets = target_tg[mode]
+        if batch_size is None:
+            return jax.vmap(integrate_target)(targets)
+        else:
+            return jax.lax.map(integrate_target, targets, batch_size=batch_size)
+    
+    factors, info1 = zip(*(lax.map(lambda a: _integrate(integrate_gs_term, a, mode), gs.alpha) for mode in modes))
+    return tuple(factors), merge_quad_info(*info1)
+
+
+def fit_newtonpotential(
+    inv_factors: Factors, factors_newtonpot: tuple[Factors, ...], core: Core, gs: GS
+) -> Core:
+    """Computes the core tensor corresponding the the inverse factors `inv_factors`
+    for the given GS approximation of the superpotential given by `factors_superpot` and `core`.
+
+    Parameters
+    ----------
+    inv_factors : Factors
+    factors_superpot : tuple[Factors, ...]
+    core : Core
+    gs : GS
+
+    Returns
+    -------
+    Core
+    """
+    cores = jax.vmap(lambda f: fit(inv_factors, TuckerTensor(core, f)))(factors_newtonpot)
+    cores = gs.omega[:, *[None for _ in cores.shape[1:]]] * cores
+    core = jnp.sum(cores, axis=(0))
+    return core
