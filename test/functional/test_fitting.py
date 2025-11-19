@@ -2,14 +2,14 @@ import timeit
 
 import pytest
 
-from tpelm.bspline import BSpline
-from tpelm.tensor_grid import TensorGrid
-from tpelm.base import fit, factors_pinv
-from tpelm.tucker_tensor import TuckerTensor
+from ho_stray_field.bspline import BSpline
+from ho_stray_field.tensor_grid import TensorGrid
+from ho_stray_field.base import fit, factors_pinv
+from ho_stray_field.tucker_tensor import TuckerTensor
+from ho_stray_field.utils import write_csv_row
+from ho_stray_field.sources import flower_state, vortex_state
 
 from .. import *
-from ..sources import flower_state, vortex_state
-from .utils import write_csv_row
 
 
 @pytest.mark.functional

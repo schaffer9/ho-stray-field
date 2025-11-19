@@ -1,7 +1,7 @@
 [project]
-name = "TPELM"
+name = "ho_stray_field"
 version = "0.1.0"
-description = "Tensor Product Extreme Learning Machines"
+description = "Higher order stray field computation with Tensor Product Extreme Learning Machines"
 authors = [{ name = "Sebastian Schaffer", email = "sebastian.schaffer@univie.ac.at" }]
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,12 +21,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["tpelm"]
+packages = ["ho_stray_field"]
 
 
 [tool.pytest.ini_options]
-addopts = '--doctest-modules --cov=tpelm --cov-report=term-missing -ra -q -m "not functional"'
-testpaths = ["test", "tpelm"]
+addopts = '--doctest-modules --cov=ho_stray_field --cov-report=term-missing -ra -q -m "not functional"'
+testpaths = ["test", "ho_stray_field"]
 markers = [
     "functional: marks tests as functional (long-running or output-generating)",
 ]

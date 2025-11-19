@@ -3,14 +3,14 @@ from pathlib import Path
 import pytest
 import numpy as np
 
-from tpelm.bspline import BSpline
-from tpelm.tensor_grid import TensorGrid
-from tpelm.base import fit
-from tpelm.gs import superpotential, superpotential_factors, GS
+from ho_stray_field.bspline import BSpline
+from ho_stray_field.tensor_grid import TensorGrid
+from ho_stray_field.base import fit
+from ho_stray_field.gs import superpotential, superpotential_factors, GS
+from ho_stray_field.sources import flower_state
+from ho_stray_field.utils import write_csv_row
 
 from .. import *
-from ..sources import flower_state
-from .utils import write_csv_row
 
 
 @pytest.fixture(scope="module")
@@ -37,12 +37,12 @@ class TestSuperpotential:
             csv_file = artifact_dir / "flower_state_sp_approx.csv"
             result = flower_superpotential
             degree = k - 1
-            n = 40
+            r = 40
 
             # setup mag elm
-            tg_m = TensorGrid(*([jnp.linspace(-0.5, 0.5, n)] * 3))
+            tg_m = TensorGrid(*([jnp.linspace(-0.5, 0.5, r)] * 3))
             elm_m = BSpline(tg_m, degree=degree)
-            tg_quad = tg_m.to_gauss(degree)
+            tg_quad = TensorGrid(*([jnp.linspace(-0.5, 0.5, 2)] * 3)).to_gauss(150)
             F = jnp.apply_along_axis(flower_state, -1, tg_quad.grid)
             inv_factors = elm_m.pinv(tg_quad)
             core_m = fit(inv_factors, F)
@@ -59,7 +59,7 @@ class TestSuperpotential:
             err = jnp.max(jnp.abs(gs_result - result))
             data = {
                 "k": k,
-                "r": n,
+                "r": r,
                 "error_max": err,
                 "int_error": info.err,
                 "int_status": info.status,

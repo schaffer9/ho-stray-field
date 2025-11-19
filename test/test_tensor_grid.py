@@ -1,6 +1,6 @@
 from . import *
 
-from tpelm.tensor_grid import TensorGrid
+from ho_stray_field.tensor_grid import TensorGrid
 
 
 class TestTensorGrid(JaxTestCase):

@@ -1,11 +1,11 @@
-from tpelm.gs import GS, superpotential_factors, integrate_gs_term, integrate_r2_gs_term, fit_superpotential
-from tpelm.base import fit, factors_pinv
-from tpelm.bspline import BSpline
-from tpelm.tensor_grid import TensorGrid
-from tpelm.integrate import gauss, sinc_quad_1_over_sqrtx
+from ho_stray_field.gs import GS, superpotential_factors, integrate_gs_term, integrate_r2_gs_term, fit_superpotential
+from ho_stray_field.base import fit, factors_pinv
+from ho_stray_field.bspline import BSpline
+from ho_stray_field.tensor_grid import TensorGrid
+from ho_stray_field.integrate import gauss
+from ho_stray_field.sources import flower_state
 
 from . import *
-from .sources import flower_state
 
 
 def test_gs_from_sinc():
@@ -82,7 +82,7 @@ class TestSuperpotential(JaxTestCase):
         t3 = jnp.linspace(-0.5, 0.5, 12)
         tg_source = TensorGrid(t1, t2, t3)
         elm_source = BSpline(tg_source, degree=3)
-        gs = GS(*sinc_quad_1_over_sqrtx(10))
+        gs = GS.from_sinc_1_over_sqrtx(10)
 
         weights, nodes = zip(gauss(3)(t1), gauss(3)(t2), gauss(3)(t3))
         tg_quad = TensorGrid(*nodes, weights=weights)

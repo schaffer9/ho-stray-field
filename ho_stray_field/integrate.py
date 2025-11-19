@@ -1,5 +1,6 @@
 from typing import Any, Callable, TypeAlias
 
+import numpy as np
 from numpy.polynomial.legendre import leggauss
 
 from . import *
@@ -45,7 +46,7 @@ def gauss(degree: int) -> QuadRule:
     return quad
 
 
-def sinc_quad(n: int, c0: float) -> tuple[Weights, Nodes]:
+def sinc_quad(n: int, c0: float, dtype=np.float128) -> tuple[Weights, Nodes]:
     """Sinc quadrature
 
     Parameters
@@ -59,15 +60,17 @@ def sinc_quad(n: int, c0: float) -> tuple[Weights, Nodes]:
     -------
     tuple[Weights, Nodes]
     """
-    h = c0 * jnp.log(n) / n
-    j = jnp.arange(n)
-    x = jnp.sinh(j * h)
-    w = 2 * h * jnp.cosh(j * h)
-    w = w.at[0].set(h)
+    n = np.array(n, dtype=dtype)
+    c0 = np.array(c0, dtype=dtype)
+    h = c0 * np.log(n) / n
+    j = np.arange(n)
+    x = np.sinh(j * h)
+    w = 2 * h * np.cosh(j * h)
+    w[0] = h
     return w, x
 
 
-def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9):
+def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9, dtype=np.float128):
     r"""Sinc quadrature for :math:`1/\sqrt{x}`.
 
     Parameters
@@ -81,7 +84,7 @@ def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9):
     -------
     tuple[Weights, Nodes]
     """
-    omega, alpha = sinc_quad(rank, c0)
+    omega, alpha = sinc_quad(rank, c0, dtype=dtype)
     alpha = alpha ** 2
-    omega = 1 / jnp.sqrt(jnp.pi) * omega
+    omega = 1 / np.sqrt(np.pi) * omega
     return omega, alpha

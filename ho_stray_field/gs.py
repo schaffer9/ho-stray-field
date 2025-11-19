@@ -1,6 +1,7 @@
 from typing import NamedTuple, Self, Callable
 
-from quadax import quadgk, quadts, quadcc
+import numpy as np
+from quadax import quadgk
 from quadax.utils import QuadratureInfo
 
 from . import *
@@ -24,7 +25,7 @@ class GS(NamedTuple):
     alpha: jax.Array
 
     @classmethod
-    def from_sinc_1_over_sqrtx(cls, rank: int, c0: float = 1.9) -> Self:
+    def from_sinc_1_over_sqrtx(cls, rank: int, c0: float = 1.9, dtype=np.float128) -> Self:
         r"""Creates a Gaussian sum approximation for :math:`1/\sqrt{x}` with
         sinc quadrature.
 
@@ -39,7 +40,9 @@ class GS(NamedTuple):
         -------
         GS
         """
-        return cls(*sinc_quad_1_over_sqrtx(rank, c0))
+        jax_dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+        omega, alpha = sinc_quad_1_over_sqrtx(rank, c0, dtype=dtype)
+        return cls(jnp.array(omega, dtype=jax_dtype), jnp.array(alpha, dtype=jax_dtype))
 
 
 def _quad(g, x, interval, alpha, stds: int = 4, **kwargs):

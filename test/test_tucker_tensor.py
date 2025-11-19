@@ -1,6 +1,6 @@
 from . import *
 
-from tpelm.tucker_tensor import TuckerTensor
+from ho_stray_field.tucker_tensor import TuckerTensor
 
 
 class TestTuckerTensor(JaxTestCase):
