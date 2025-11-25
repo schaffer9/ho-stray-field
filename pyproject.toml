@@ -1,11 +1,12 @@
 [project]
-name = "ho_stray_field"
+name = "ho-stray-field"
 version = "0.1.0"
-description = "Higher order stray field computation with Tensor Product Extreme Learning Machines"
+description = "Higher order stray field computation via super-potential method"
 authors = [{ name = "Sebastian Schaffer", email = "sebastian.schaffer@univie.ac.at" }]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "numpy",
     "jax",
     "quadax",
 ]
@@ -14,6 +15,8 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-cov",
+    "sphinx",
+    "sphinx-rtd-theme",
 ]
 
 [build-system]

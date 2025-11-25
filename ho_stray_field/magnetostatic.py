@@ -75,7 +75,7 @@ class FTState(NamedTuple):
         return self.elm.fit(self.quad_grid, f, self.inv_factors)
 
 
-class PotentialState(NamedTuple):
+class _PotentialState(NamedTuple):
     """Stores data for solving for a potential. This can either be 
     the superpotential or the Newton potential. `mag_state` is the 
     magnetization solver for a specific domain
@@ -117,10 +117,10 @@ class PotentialState(NamedTuple):
     def init(
         cls,
         pot_elm: TPELM,
+        target_quad_grid: TensorGrid,
         mag_elm: TPELM | None = None,
-        pot_quad_grid: TensorGrid | int = 5,
-        mag_quad_grid: TensorGrid | int | None = None,
-        target_quad_grid: TensorGrid | int | None = None,
+        pot_quad_grid: TensorGrid | None = None,
+        mag_quad_grid: TensorGrid | None = None,
         gs_terms: int = 46,
         gs_coeff: float = 1.9,
         gk_epsabs: float = 1e-13,
@@ -137,20 +137,17 @@ class PotentialState(NamedTuple):
         ----------
         pot_elm : TPELM
             potential TPELM
+        target_quad_grid : TensorGrid
+            targets where the potential is evaluated
         mag_elm : TPELM | None, optional
             magnetization TPELM; if `None` then `mag_elm=sp_elm` is used, by default None
-        pot_quad_grid : TensorGrid | int, optional
+        pot_quad_grid : TensorGrid, optional
             quadrature tensor grid for the potential; 
-            integer value creates a Gauss-Legendre rule based on the domain of `sp_elm`,
-            by default 5
-        mag_quad_grid : TensorGrid | int | None, optional
+            defaults to `target_quad_grid`;
+            by default None
+        mag_quad_grid : TensorGrid | None, optional
             quadrature tensor grid for the magnetization; 
-            integer value creates a Gauss-Legendre rule based on the domain of `mag_elm`;
-            if `None` then `sp_quad_grid` is used,
-            by default 5, by default None
-        target_quad_grid : TensorGrid | int | None, optional
-            targets at which the potential can be evaluated;
-            if `None` then `sp_quad_grid` is used;
+            defaults to `target_quad_grid`;
             by default None
         gs_terms : int, optional
             number of terms in the GS approximation, by default 46
@@ -178,15 +175,15 @@ class PotentialState(NamedTuple):
             mag_elm = pot_elm
 
         assert mag_elm is not None
+        if pot_quad_grid is None:
+            pot_quad_grid = target_quad_grid
+        
+        if mag_quad_grid is None:
+            mag_quad_grid = target_quad_grid
 
         _gs = gs.GS.from_sinc_1_over_sqrtx(gs_terms, gs_coeff)
         pot_state = FTState.init(pot_elm, pot_quad_grid, pot_pinv_tol)
         mag_state = FTState.init(mag_elm, pot_state.quad_grid if mag_quad_grid is None else mag_quad_grid, mag_pinv_tol)
-
-        if target_quad_grid is None:
-            target_quad_grid = pot_state.quad_grid
-        elif isinstance(target_quad_grid, int):
-            target_quad_grid = pot_elm.domain.to_gauss(target_quad_grid)
 
         if potential.lower() in ("sp", "superpotential"):
             pot_factors, gk_quad_info = gs.superpotential_factors(
@@ -228,7 +225,7 @@ class PotentialState(NamedTuple):
 
 @partial(register_dataclass, data_fields=["pot_state", "pot_domain_states", "mags", "quad_grids"], meta_fields=["potential"])
 @dataclass
-class DomainState:
+class PotentialState:
     """Stores data for solving for the required potential on one or multiple different domains.
     
     Attributes
@@ -247,7 +244,7 @@ class DomainState:
     """
     potential: str
     pot_state: dict[int, FTState]
-    pot_domain_states: dict[int, dict[int, PotentialState]]
+    pot_domain_states: dict[int, dict[int, _PotentialState]]
     mags: dict[int, FTState]
     quad_grids: dict[int, TensorGrid]
 
@@ -255,11 +252,11 @@ class DomainState:
     def init(
         cls,
         pot_elm: TPELM | dict[int, TPELM],
+        target_quad_grid: TensorGrid | dict[int, TensorGrid],
         mag_elm: TPELM | dict[int, TPELM] | None = None,
-        pot_quad_grid: TensorGrid | dict[int, TensorGrid] | int = 5,
-        mag_quad_grid: TensorGrid | dict[int, TensorGrid] | int | None = None,
-        target_quad_grid: TensorGrid | dict[int, TensorGrid] | None = None,
-        gs_terms: int = 46,
+        pot_quad_grid: TensorGrid | dict[int, TensorGrid] | None = None,
+        mag_quad_grid: TensorGrid | dict[int, TensorGrid] | None = None,
+        gs_terms: int = 100,
         gs_coeff: float = 1.9,
         gk_epsabs: float = 1e-13,
         gk_epsrel: float = 1e-16,
@@ -275,20 +272,17 @@ class DomainState:
         ----------
         pot_elm : TPELM | dict[int, TPELM]
             potential TPELM
+        target_quad_grid : TensorGrid | dict[int, TensorGrid]
+            targets where the potential is evaluated;
         mag_elm : TPELM | dict[int, TPELM] | None, optional
             magnetization TPELM; if `None` then `mag_elm=pot_elm` is used, by default None, by default None
-        pot_quad_grid : TensorGrid | dict[int, TensorGrid] | int, optional
-            quadrature tensor grid for the potential; 
-            integer value creates a Gauss-Legendre rule based on the domain of `pot_elm`,
-            by default 5, by default 5
-        mag_quad_grid : TensorGrid | dict[int, TensorGrid] | int | None, optional
+        pot_quad_grid : TensorGrid | dict[int, TensorGrid], optional
+            quadrature tensor grid for the potential;
+            defaults to `target_quad_grid`;
+            by default None
+        mag_quad_grid : TensorGrid | dict[int, TensorGrid] | None, optional
             quadrature tensor grid for the magnetization; 
-            integer value creates a Gauss-Legendre rule based on the domain of `mag_elm`;
-            if `None` then `sp_quad_grid` is used,
-            by default 5, by default None
-        target_quad_grid : TensorGrid | dict[int, TensorGrid] | None, optional
-            targets at which the potential can be evaluated;
-            if `None` then `sp_quad_grid` is used;
+            defaults to `target_quad_grid`;
             by default None
         gs_terms : int, optional
             number of terms in the GS approximation, by default 46
@@ -325,21 +319,26 @@ class DomainState:
         if mag_elm is None:
             mag_elm = pot_elm
             
+        target_quad_grid = _to_dict(target_quad_grid, pot_elm)
+        if pot_quad_grid is None:
+            pot_quad_grid = target_quad_grid
         if mag_quad_grid is None:
-            mag_quad_grid = pot_quad_grid
+            mag_quad_grid = target_quad_grid
         
         mag_elm = _to_dict(mag_elm, pot_elm)
         pot_quad_grid = _to_dict(pot_quad_grid, pot_elm)
         mag_quad_grid = _to_dict(mag_quad_grid, mag_elm)
-        target_quad_grid = _to_dict(target_quad_grid, pot_elm)
         pot_pinv_tol = _to_dict(pot_pinv_tol, pot_elm)
         mag_pinv_tol = _to_dict(mag_pinv_tol, mag_elm)
 
+        # create potential FT for each domain
         pot = {i: FTState.init(pot_elm[i], pot_quad_grid[i], pot_pinv_tol[i]) for i in pot_elm.keys()}
+        # create Magnetization FT for each domain
         mags = {i: FTState.init(mag_elm[i], mag_quad_grid[i], mag_pinv_tol[i]) for i in mag_elm.keys()}
+        # create multi domain potential solvers
         pot_domain_states = {
             i: {
-                k: PotentialState.init(
+                k: _PotentialState.init(
                     pot_elm=pot_elm[i],
                     mag_elm=mag_elm[k],
                     pot_quad_grid=pot_quad_grid[i],
@@ -379,7 +378,7 @@ def _to_dict(v: Any | dict[int, Any], ref_dict: dict[int, Any]) -> dict[int, Any
 RawMag: TypeAlias = F
 
 
-def fit_mag(state: DomainState, mag: RawMag | dict[int, RawMag]) -> dict[int, FunctionalTucker]:
+def fit_mag(state: PotentialState, mag: RawMag | dict[int, RawMag]) -> dict[int, FunctionalTucker]:
     """Fits the magnetization for each domain to `FunctionalTucker` format.
 
     Parameters
@@ -398,7 +397,7 @@ def fit_mag(state: DomainState, mag: RawMag | dict[int, RawMag]) -> dict[int, Fu
 
 
 def superpotential(
-    state: DomainState, mags: dict[int, Magnetization]
+    state: PotentialState, mags: Magnetization | dict[int, Magnetization]
 ) -> dict[int, SuperPotential]:
     """Computes the superpotential for the given magnetization.
 
@@ -412,13 +411,16 @@ def superpotential(
     -------
     dict[int, Superpotential]
     """
+    if not isinstance(mags, dict):
+        mags = {0: mags}
+
     if state.potential != "superpotential":
         raise ValueError(
             "The superpotential can only be solved for with a solver for the superpotential. "
             "Set `potential='superpotential'"
         )
     
-    def fit_sp(state: dict[int, PotentialState], mags: dict[int, Magnetization]) -> SuperPotential:
+    def fit_sp(state: dict[int, _PotentialState], mags: dict[int, Magnetization]) -> SuperPotential:
         # the magnetization in each domain contributes to the superpotential in the current domain
         sp_cores = jnp.asarray([_superpotential(s, mags[i]).core for i, s in state.items()])
         core = jnp.sum(sp_cores, axis=0)  # superpotential is the sum of all contributions
@@ -429,7 +431,7 @@ def superpotential(
 
 
 def newtonpotential(
-    state: DomainState, mags: dict[int, Magnetization]
+    state: PotentialState, mags: Magnetization | dict[int, Magnetization]
 ) -> dict[int, SuperPotential]:
     """Computes the newtonpotential for the given magnetization.
 
@@ -443,13 +445,15 @@ def newtonpotential(
     -------
     dict[int, NewtonPotential]
     """
+    if not isinstance(mags, dict):
+        mags = {0: mags}
     if state.potential != "newtonpotential":
         raise ValueError(
             "The newtonpotential can only be solved for with a solver for the newtonpotential. "
             "Set `potential='newtonpotential'"
         )
     
-    def fit_np(state: dict[int, PotentialState], mags: dict[int, Magnetization]) -> SuperPotential:
+    def fit_np(state: dict[int, _PotentialState], mags: dict[int, Magnetization]) -> SuperPotential:
         # the magnetization in each domain contributes to the superpotential in the current domain
         sp_cores = jnp.asarray([_newtonpotential(s, mags[i]).core for i, s in state.items()])
         core = jnp.sum(sp_cores, axis=0)  # superpotential is the sum of all contributions
@@ -459,7 +463,7 @@ def newtonpotential(
     return superpotentials
 
 
-def scalar_potential(state: DomainState, pot: dict[int, Potential]) -> dict[int, ScalarPotential]:
+def scalar_potential(state: PotentialState, pot: dict[int, Potential]) -> dict[int, ScalarPotential]:
     """Computes the scalar potential from the given superpotential.
 
     Parameters
@@ -480,7 +484,7 @@ def scalar_potential(state: DomainState, pot: dict[int, Potential]) -> dict[int,
         raise NotImplementedError
 
 
-def stray_field(state: DomainState, scalar_pot: dict[int, ScalarPotential]) -> dict[int, StrayField]:
+def stray_field(state: PotentialState, scalar_pot: dict[int, ScalarPotential]) -> dict[int, StrayField]:
     """Computes the stray field from the given superpotential.
 
     Parameters
@@ -518,7 +522,7 @@ def energy(h: dict[int, StrayField], m: dict[int, Magnetization], quad_grids: di
 
 
 def solve_energy(
-    state: DomainState, 
+    state: PotentialState, 
     m: RawMag | dict[int, RawMag], 
     quad_grid: TensorGrid | dict[int, TensorGrid] | None = None
 ) -> jax.Array:
@@ -554,12 +558,12 @@ def solve_energy(
     return energy(h, mag, quad_grid)
 
 
-def _superpotential(state: PotentialState, m: FunctionalTucker) -> SuperPotential:
+def _superpotential(state: _PotentialState, m: FunctionalTucker) -> SuperPotential:
     sp_core = 1 / (8 * jnp.pi) * gs.fit_superpotential(state.inv_factors, state.pot_factors, m.core, state.gs)
     return SuperPotential(sp_core, state.pot_state.elm)
 
 
-def _newtonpotential(state: PotentialState, m: FunctionalTucker) -> NewtonPotential:
+def _newtonpotential(state: _PotentialState, m: FunctionalTucker) -> NewtonPotential:
     np_core = -1 / (4 * jnp.pi) * gs.fit_newtonpotential(state.inv_factors, state.pot_factors, m.core, state.gs)
     return SuperPotential(np_core, state.pot_state.elm)
 
