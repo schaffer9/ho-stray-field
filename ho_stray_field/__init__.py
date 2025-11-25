@@ -1,9 +1,29 @@
-from functools import partial
+from ho_stray_field.base import TPELM, FunctionalTucker, fit
+from ho_stray_field.tensor_grid import TensorGrid
+from ho_stray_field.bspline import BSpline
+from ho_stray_field.magnetostatic import (
+    PotentialState, 
+    fit_mag,
+    superpotential,
+    newtonpotential,
+    scalar_potential,
+    stray_field,
+    energy,
+    solve_energy
+)
 
-import jax
-import jax.numpy as jnp
-from jax import lax
-from jax import tree
-from jax import random
-import flax
-import flax.linen as nn
+__all__ = (
+    "TPELM",
+    "FunctionalTucker",
+    "fit",
+    "TensorGrid",
+    "BSpline",
+    "PotentialState",
+    "fit_mag",
+    "superpotential",
+    "newtonpotential",
+    "scalar_potential",
+    "stray_field",
+    "energy",
+    "solve_energy",
+)

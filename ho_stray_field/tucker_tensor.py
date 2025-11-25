@@ -1,7 +1,7 @@
 from typing import NamedTuple, TypeAlias, Self
 import string
 
-from . import *
+from .prelude import *
 
 Factors: TypeAlias = tuple[jax.Array, ...]
 Core: TypeAlias = jax.Array

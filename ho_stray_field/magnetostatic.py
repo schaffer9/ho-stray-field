@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from jax.tree_util import register_dataclass
 from quadax.utils import QuadratureInfo
 
-from . import *
+from .prelude import *
 from . import gs
 from .tensor_grid import TensorGrid
 from .base import TPELM, FunctionalTucker, factors_pinv
@@ -500,7 +500,7 @@ def stray_field(state: PotentialState, scalar_pot: dict[int, ScalarPotential]) -
     return {i: _stray_field(s, scalar_pot[i]) for i, s in state.pot_state.items()}
 
 
-def energy(h: dict[int, StrayField], m: dict[int, Magnetization], quad_grids: dict[int, TensorGrid]) -> jax.Array:
+def energy(h: dict[int, StrayField], m: dict[int, Magnetization], quad_grids: TensorGrid | dict[int, TensorGrid]) -> jax.Array:
     """Computes the magnetostatic energy.
 
     Parameters
@@ -517,6 +517,8 @@ def energy(h: dict[int, StrayField], m: dict[int, Magnetization], quad_grids: di
     jax.Array
         Energy
     """
+    if not isinstance(quad_grids, dict):
+        quad_grids = {0: quad_grids}
     assert h.keys() == m.keys() == quad_grids.keys(), "`h` and `m` must describe same domains"
     return jnp.sum(jnp.asarray([_energy(h[i], m[i], quad_grids[i]) for i in h.keys()]))
 

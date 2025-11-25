@@ -2,7 +2,7 @@ from typing import Sequence, Self
 
 from jax.tree_util import register_pytree_node_class
 
-from . import *
+from .prelude import *
 from .integrate import gauss
 
 

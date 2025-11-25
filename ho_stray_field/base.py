@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 
 from jax.tree_util import register_dataclass
 
-from . import *
+from .prelude import *
 from .tucker_tensor import TuckerTensor, Factors, Core
 from .tensor_grid import TensorGrid
 

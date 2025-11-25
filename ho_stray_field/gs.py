@@ -4,7 +4,7 @@ import numpy as np
 from quadax import quadgk
 from quadax.utils import QuadratureInfo
 
-from . import *
+from .prelude import *
 from .base import TPELM, fit
 from .bspline import BSpline
 from .tensor_grid import TensorGrid

@@ -2,7 +2,7 @@ import dataclasses
 
 from jax.tree_util import register_dataclass
 
-from . import *
+from .prelude import *
 from .base import TPELM
 from .tensor_grid import TensorGrid
 

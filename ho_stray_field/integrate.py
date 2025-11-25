@@ -3,7 +3,7 @@ from typing import Any, Callable, TypeAlias
 import numpy as np
 from numpy.polynomial.legendre import leggauss
 
-from . import *
+from .prelude import *
 
 
 Weights: TypeAlias = jax.Array

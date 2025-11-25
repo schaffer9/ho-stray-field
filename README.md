@@ -31,8 +31,11 @@ pip install -e .
 As a quick example, we compute the micromagnetic energy of a flower state:
 
 ```python
+import jax
 import jax.numpy as jnp
-from ho_stray_field.magnetostatic import (
+from ho_stray_field import (
+    TensorGrid,
+    BSpline,
     PotentialState, 
     solve_energy, 
     fit_mag,
@@ -68,7 +71,7 @@ mag = fit_mag(solver, flower_state)
 # Once this is done we can compute the superpotential,
 sp = superpotential(solver, mag)
 # the scalar potential,
-phi = scalar_potential(solver, sp),
+phi = scalar_potential(solver, sp)
 # the stray field
 h = stray_field(solver, phi)
 # and the energy
