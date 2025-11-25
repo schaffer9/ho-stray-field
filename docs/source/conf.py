@@ -27,14 +27,10 @@ extensions = [
     'sphinx.ext.mathjax',
 ]
 
-autodoc_default_options = {
-    #'members': True,
-    #'member-order': 'bysource',
-    #'special-members': '__init__',
-    #'undoc-members': True,
-    #'exclude-members': '__weakref__',
-    'show-inheritance': False
-}
+myst_enable_extensions = [
+    "dollarmath",           # $...$ and $$...$$
+    "amsmath",              # \begin{align}, \begin{equation}, etc.
+]
 
 templates_path = ['_templates']
 exclude_patterns = []

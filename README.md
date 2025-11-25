@@ -86,4 +86,3 @@ More examples can be found in the **examples** folder.
 
 ## Acknowledgements
 Financial support by the Austrian Science Fund (FWF) via project ”Data-driven Reduced Order Approaches for Micromagnetism (Data-ROAM)” (Grant-DOI: 10.55776/PAT7615923) and project ”Design of Nanocomposite Magnets by Machine Learning (DeNaMML)” (Grant-DOI: 10.55776/P35413) is gratefully acknowledged. The authors acknowledge the University of Vienna research platform MMM Mathematics - Magnetism - Materials. The computations were partly achieved by using the Vienna Scientific Cluster (VSC) via the funded projects No. 71140 and 71952. This research was funded in whole or in part by the Austrian Science Fund (FWF) [10.55776/PAT7615923, 10.55776/P35413].
-
