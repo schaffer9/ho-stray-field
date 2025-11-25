@@ -77,7 +77,7 @@ h = stray_field(solver, phi)
 # and the energy
 energy(h, mag, quad_grid)
 
-# If only the energy is requires we can compute it directly with
+# If only the energy is required we can compute it directly with
 solve_energy(solver, mag)
 ```
 
