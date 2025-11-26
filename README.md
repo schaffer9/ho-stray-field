@@ -2,7 +2,7 @@
 
 ## Higher order stray field computation via Super-Potential Method
 
-Magnetostatic stray field computation is a core component in micromagnetic simulations. This library implements high-order stray field computation utilizing the super-potential method. Both the magnetization and the resulting magnetic field are represented using higher-order B-spline bases, **i.e., as functional Tucker tensors**. The super-potential, which circumvents the need to convolve with a singular kernel, is efficiently approximated with Gaussian sums, leading to a separable expansions on the tensor product domain **and a cut-off error of fourth order**. The field is then represented with high accuracy in functional Tucker tensor format, which allows for continuous field evaluation.
+Magnetostatic stray field computation is a core component in micromagnetic simulations. This library implements high-order stray field computation utilizing the super-potential method. Both the magnetization and the resulting magnetic field are represented using higher-order B-spline bases, i.e., as functional Tucker tensors. The super-potential, which circumvents the need to convolve with a singular kernel, is efficiently approximated with Gaussian sums, leading to a separable expansions on the tensor product domain and a cut-off error of fourth order. The field is then represented with high accuracy in functional Tucker tensor format, which allows for continuous field evaluation.
 
 
 Reference for method: L. Exl and S. Schaffer (2025) arXiv preprint arxiv:2505.19180.
