@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(".."))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'ho-stray-field'
-copyright = '2025, Sebastian Schaffer'
+copyright = '2025, Sebastian Schaffer, Lukas Exl'
 author = 'Sebastian Schaffer, Lukas Exl'
 release = '0.1.0'
 
