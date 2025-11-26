@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.abspath(".."))
 
 project = 'ho-stray-field'
 copyright = '2025, Sebastian Schaffer'
-author = 'Sebastian Schaffer'
+author = 'Sebastian Schaffer, Lukas Exl'
 release = '0.1.0'
 
 # -- General configuration ---------------------------------------------------

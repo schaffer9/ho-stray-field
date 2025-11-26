@@ -2,7 +2,10 @@
 name = "ho-stray-field"
 version = "0.1.0"
 description = "Higher order stray field computation via super-potential method"
-authors = [{ name = "Sebastian Schaffer", email = "sebastian.schaffer@univie.ac.at" }]
+authors = [
+    { name = "Sebastian Schaffer", email = "sebastian.schaffer@univie.ac.at" },
+    { name = "Lukas Exl" },
+]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
