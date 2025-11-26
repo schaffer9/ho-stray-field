@@ -8,6 +8,7 @@ from .prelude import *
 from .tucker_tensor import TuckerTensor, Factors, Core
 from .tensor_grid import TensorGrid
 
+
 Tol = jax.Array | float | tuple[jax.Array | float, ...]
 
 
@@ -335,6 +336,23 @@ def fit(
     f: jax.Array | TuckerTensor | FunctionalTucker | Callable,
     tg: TensorGrid | None = None
 ) -> Core:
+    """Fits a function `f`, which can be given as `Callable`, `FunctionalTucker`,
+    as `TuckerTensor` or full tensor, and returns the core of the functional tucker
+    approximation.
+
+    Parameters
+    ----------
+    inv_factors : Factors
+        inverse factors of the TPELM which should be used to fit the function
+    f : jax.Array | TuckerTensor | FunctionalTucker | Callable
+        the function which should be fitted in functional tucker format
+    tg : TensorGrid | None, optional
+        tensor grid which is used for quadrature
+
+    Returns
+    -------
+    Core
+    """
     if tg is not None:
         if not callable(f):
             raise TypeError("`fit` requires a function is a tensor grid is provided.")
@@ -380,6 +398,21 @@ def factors_pinv(
     weights: tuple[jax.Array, ...] | None = None, 
     tol: jax.Array | float | tuple[jax.Array | float, ...] = 0.0
 ) -> Factors:
+    """Computes the pseudoinverses of the given factor matrices
+
+    Parameters
+    ----------
+    factors : Factors
+    weights : tuple[jax.Array, ...] | None, optional
+        optional quadrature weights, by default None
+    tol : jax.Array | float | tuple[jax.Array  |  float, ...], optional
+        cut-off tolerance for small singular values, by default 0.0
+
+    Returns
+    -------
+    Factors
+        inverse factor matrices
+    """
     if not isinstance(tol, Sequence):
         tol = tuple(tol for _ in range(len(factors)))
     if weights is None:
@@ -401,6 +434,24 @@ def regularized_pinv(X: jax.Array, weights: jax.Array | None = None, tol: jax.Ar
 
 
 def fit_divergence(inv_factors: Factors, partials: tuple[Factors, ...], core: Core) -> Core:
+    """Fits the divergence to functional tucker format and 
+    returns the core
+
+    Parameters
+    ----------
+    inv_factors : Factors
+        inverse factor matrices used for fitting
+    partials : tuple[Factors, ...]
+        partial derivatives of the factor matrices
+    core : Core
+        core of the original functional tucker
+
+    Returns
+    -------
+    Core
+        core of the new functional tucker which represents
+        the divergence
+    """
     _check_divergence_dim(partials, core)
 
     _partials = tuple(
@@ -415,6 +466,24 @@ def fit_divergence(inv_factors: Factors, partials: tuple[Factors, ...], core: Co
 
 
 def fit_laplace(inv_factors: Factors, partials: tuple[Factors, ...], core: Core) -> Core:
+    """Fits the Laplace to functional tucker format and 
+    returns the core
+
+    Parameters
+    ----------
+    inv_factors : Factors
+        inverse factor matrices used for fitting
+    partials : tuple[Factors, ...]
+        partial derivatives of the factor matrices
+    core : Core
+        core of the original functional tucker
+
+    Returns
+    -------
+    Core
+        core of the new functional tucker which represents
+        the Laplace
+    """
     _partials = tuple(
         TuckerTensor(core, f)
         for f in partials
@@ -431,6 +500,24 @@ def fit_laplace(inv_factors: Factors, partials: tuple[Factors, ...], core: Core)
 
 
 def fit_grad(inv_factors: Factors, partials: tuple[Factors, ...], core: Core) -> Core:
+    """Fits the gradient to functional tucker format and 
+    returns the core
+
+    Parameters
+    ----------
+    inv_factors : Factors
+        inverse factor matrices used for fitting
+    partials : tuple[Factors, ...]
+        partial derivatives of the factor matrices
+    core : Core
+        core of the original functional tucker
+
+    Returns
+    -------
+    Core
+        core of the new functional tucker which represents
+        the gradient
+    """
     _partials = tuple(
         TuckerTensor(core, f)
         for f in partials

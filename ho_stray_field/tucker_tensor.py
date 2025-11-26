@@ -3,6 +3,7 @@ import string
 
 from .prelude import *
 
+
 Factors: TypeAlias = tuple[jax.Array, ...]
 Core: TypeAlias = jax.Array
 

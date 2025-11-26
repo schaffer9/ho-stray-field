@@ -1,4 +1,4 @@
-from typing import Any, Callable, TypeAlias
+from typing import Callable, TypeAlias
 
 import numpy as np
 from numpy.polynomial.legendre import leggauss
@@ -6,8 +6,8 @@ from numpy.polynomial.legendre import leggauss
 from .prelude import *
 
 
-Weights: TypeAlias = jax.Array
-Nodes: TypeAlias = jax.Array
+Weights: TypeAlias = jax.Array | np.ndarray
+Nodes: TypeAlias = jax.Array | np.ndarray
 Grid1d: TypeAlias = jax.Array
 QuadRule: TypeAlias = Callable[[Grid1d], tuple[Weights, Nodes]]
 
@@ -60,17 +60,17 @@ def sinc_quad(n: int, c0: float, dtype=np.float128) -> tuple[Weights, Nodes]:
     -------
     tuple[Weights, Nodes]
     """
-    n = np.array(n, dtype=dtype)
-    c0 = np.array(c0, dtype=dtype)
-    h = c0 * np.log(n) / n
-    j = np.arange(n)
+    _n = np.array(n, dtype=dtype)
+    _c0 = np.array(c0, dtype=dtype)
+    h = _c0 * np.log(_n) / _n
+    j = np.arange(_n)
     x = np.sinh(j * h)
     w = 2 * h * np.cosh(j * h)
     w[0] = h
     return w, x
 
 
-def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9, dtype=np.float128):
+def sinc_quad_1_over_sqrtx(rank: int, c0: float = 1.9, dtype=np.float128) -> tuple[Weights, Nodes]:
     r"""Sinc quadrature for :math:`1/\sqrt{x}`.
 
     Parameters

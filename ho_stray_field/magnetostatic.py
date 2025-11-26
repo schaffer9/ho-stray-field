@@ -10,6 +10,7 @@ from .tensor_grid import TensorGrid
 from .base import TPELM, FunctionalTucker, factors_pinv
 from .tucker_tensor import TuckerTensor, Factors, tucker_dot
 
+
 Potential: TypeAlias = FunctionalTucker
 SuperPotential: TypeAlias = Potential
 NewtonPotential: TypeAlias = Potential
@@ -404,7 +405,7 @@ def superpotential(
     Parameters
     ----------
     state : DomainState
-    mags : dict[int, Magnetization]
+    mags : Magnetization | dict[int, Magnetization]
         in `FunctionalTucker` format
 
     Returns
@@ -438,7 +439,7 @@ def newtonpotential(
     Parameters
     ----------
     state : DomainState
-    mags : dict[int, Magnetization]
+    mags : Magnetization | dict[int, Magnetization]
         in `FunctionalTucker` format
 
     Returns
@@ -509,7 +510,7 @@ def energy(h: dict[int, StrayField], m: dict[int, Magnetization], quad_grids: Te
         stray field in `FunctionalTucker` format
     m : dict[int, Magnetization]
         magnetization in `FunctionalTucker` format
-    quad_grids : dict[int, TensorGrid]
+    quad_grids : TensorGrid | dict[int, TensorGrid]
         quadrature tensor grid
 
     Returns

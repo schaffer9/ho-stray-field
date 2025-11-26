@@ -6,7 +6,6 @@ from quadax.utils import QuadratureInfo
 
 from .prelude import *
 from .base import TPELM, fit
-from .bspline import BSpline
 from .tensor_grid import TensorGrid
 from .integrate import sinc_quad_1_over_sqrtx
 from .tucker_tensor import TuckerTensor, Factors, Core

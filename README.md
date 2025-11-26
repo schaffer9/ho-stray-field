@@ -1,4 +1,6 @@
-# Higher order stray field computation via Super-Potential Method
+# ho-stray-field
+
+## Higher order stray field computation via Super-Potential Method
 
 Magnetostatic stray field computation is a core component in micromagnetic
 simulations. This library implements high-order stray field computation utilizing 

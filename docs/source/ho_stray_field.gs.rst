@@ -10,4 +10,4 @@ ho\_stray\_field.gs module
    :members:
    :show-inheritance:
    :undoc-members:
-   :exclude-members: GS
+   :exclude-members: GS, integrate_gs_term, integrate_r2_gs_term, merge_quad_info
