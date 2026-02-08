@@ -1,8 +1,10 @@
 import abc
+from operator import mul
 from typing import Self, Sequence, Callable, overload
 from dataclasses import dataclass, replace
 
 from jax.tree_util import register_dataclass
+from jaxtyping import Scalar
 
 from .prelude import *
 from .tucker_tensor import TuckerTensor, Factors, Core
@@ -42,6 +44,26 @@ class TPELM(abc.ABC):
                 return tucker_tensor.to_tensor()[*(0 for _ in range(len(factors)))]
             return jnp.apply_along_axis(eval_point, -1, x)
 
+    # def inner_product(self, other: Self, tg: TensorGrid) -> Callable[[Core, Core], Scalar]:
+    #     fa, fb = self.factors(tg, mul_weights=True), other.factors(tg, mul_weights=False)
+    #     def _inner(a: Core | FunctionalTucker, b: Core | FunctionalTucker):
+    #         if isinstance(a, FunctionalTucker):
+    #             a = a.core
+    #         if isinstance(b, FunctionalTucker):
+    #             b = b.core
+                
+    #         t1, t2 = TuckerTensor(a, fa), TuckerTensor(b, fb)
+    #         return t1.dot(t2)
+        
+    #     return _inner
+    
+    def fitting_fn(self, tg: TensorGrid, tol: Tol = 0.0):
+        inv_factors = self.pinv(tg, tol)
+        def _fit(f: jax.Array | TuckerTensor | FunctionalTucker | Callable) -> FunctionalTucker:
+            return self.fit(tg, f, inv_factors)
+
+        return _fit
+    
     def factors(self, tg: TensorGrid, mul_weights: bool = False) -> Factors:
         """Computes the factor matrices on the given tensor grid
 
@@ -81,7 +103,7 @@ class TPELM(abc.ABC):
         factors = self.factors(tg)
         return factors_pinv(factors, tg.weights, tol=tol)
 
-    def factors_and_partials(self, tg: TensorGrid) -> tuple[Factors, tuple[Factors, ...]]:
+    def factors_and_partials(self, tg: TensorGrid, order: int=1) -> tuple[Factors, tuple[Factors, ...]]:
         """Computes the factors and partial derivatives of the factors for the given
         tensor grid.
 
@@ -95,7 +117,7 @@ class TPELM(abc.ABC):
         """
         modes = list(range(self.dimension))
         _factors, _factors_derivative = tuple(
-            zip(*(_elementwise_derivative(lambda x: self.basis(x, m), xi) for xi, m in zip(tg, modes)))
+            zip(*(_elementwise_derivative(lambda x: self.basis(x, m), xi, order=order) for xi, m in zip(tg, modes)))
         )
 
         def _partial(i):
@@ -154,6 +176,27 @@ class FunctionalTucker:
 
     def __call__(self, x: jax.Array | TensorGrid) -> jax.Array:
         return self.elm(x, self.core)
+    
+    def __add__(self, other: Self) -> Self:
+        return replace(self, core=self.core + other.core)
+    
+    def __sub__(self, other: Self) -> Self:
+        return replace(self, core=self.core - other.core)
+    
+    def __mul__(self, factor: Scalar | float) -> Self:
+        assert jnp.asarray(factor).shape == ()
+        return replace(self, core=factor * self.core)
+    
+    def __truediv__(self, factor: Scalar | float) -> Self:
+        assert jnp.asarray(factor).shape == ()
+        return replace(self, core=self.core / factor)
+    
+    def __neg__(self) -> Self:
+        return replace(self, core=-self.core)
+    
+    #__radd__ = __add__
+    #__rsub__ = __sub__
+    __rmul__ = __mul__
     
     def factors(self, tg: TensorGrid, mul_weights: bool = False) -> Factors:
         """Computes the factor matrices on the given tensor grid
@@ -384,13 +427,33 @@ def fit_to_tucker(inv_factors: Factors, F: TuckerTensor) -> Core:
     return tucker_tensor.to_tensor()
 
 
-def _elementwise_derivative(f, x):
+# def _elementwise_derivative(f, x):
+    
+#     def _f(x):
+#         y = f(x)
+#         return y, y
+    
+#     if x.shape == ():
+#         df, y = jax.jacfwd(_f, has_aux=True)(x)
+#     else:
+#         df, y = jax.vmap(jax.jacfwd(_f, has_aux=True))(x)
+#     return y, df
+
+def _elementwise_derivative(f, x, order=1):
+    
     def _f(x):
         y = f(x)
-        return y, y
+        df = f
+        for _ in range(order):
+            df = jax.jacfwd(df)
+        dy = df(x)
+        return y, dy
     
-    df, y = jax.vmap(jax.jacfwd(_f, has_aux=True))(x)
-    return y, df
+    if x.shape == ():
+        return _f(x)
+    else:
+        return jax.vmap(_f)(x)
+
 
 
 def factors_pinv(

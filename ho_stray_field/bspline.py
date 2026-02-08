@@ -3,7 +3,7 @@ import dataclasses
 from jax.tree_util import register_dataclass
 
 from .prelude import *
-from .base import TPELM
+from .base import TPELM, _elementwise_derivative
 from .tensor_grid import TensorGrid
 
 
@@ -123,3 +123,34 @@ class BSpline(TPELM):
     def basis(self, x: jax.Array, mode: int) -> jax.Array:
         _basis = basis(x, self.grid[mode], degree=self.degree)
         return _basis
+
+
+@partial(register_dataclass,
+         data_fields=["grid"],
+         meta_fields=["degree"])
+@dataclasses.dataclass
+class NeumannBSpline(BSpline):
+    r"""Transforms the original BSpline basis in such a way that first order derivatives vanish
+    on the boundary, i.e., :math:`\partial_n u(x) = 0`. This is done with an approximate distance 
+    function as in [1]_.
+
+    Parameters
+    ----------
+    BSpline : _type_
+        _description_
+        
+    Notes
+    -----
+    .. [1] Sukumar, N., & Srivastava, A. (2022). 
+       Exact imposition of boundary conditions with distance functions in physics-informed deep neural networks.
+       Computer Methods in Applied Mechanics and Engineering, 389, 114333.
+    """
+    def basis(self, x: jax.Array, mode: int) -> jax.Array:
+        lb, ub = self.grid[mode][0], self.grid[mode][-1]
+        _basis = lambda x: basis(x, self.grid[mode], degree=self.degree)
+        b, db = _elementwise_derivative(_basis, x)
+        l = -1 / (ub - lb) * (x ** 2 - (lb + ub) * x + lb * ub)
+        l_prime = -1 / (ub - lb) * (2 * x - (lb + ub))
+        l = l[..., *[None] * (b.ndim - 1)]
+        l_prime = l_prime[..., *[None] * (b.ndim - 1)]
+        return b - l * l_prime * db + l ** 2 * b

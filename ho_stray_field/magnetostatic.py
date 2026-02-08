@@ -1,13 +1,15 @@
 from typing import Any, Callable, Self, NamedTuple, TypeAlias
 from dataclasses import dataclass
 
+from altair import Fit
 from jax.tree_util import register_dataclass
 from quadax.utils import QuadratureInfo
 
 from .prelude import *
 from . import gs
 from .tensor_grid import TensorGrid
-from .base import TPELM, FunctionalTucker, factors_pinv
+from .base import TPELM, FunctionalTucker, factors_pinv, Tol
+from .bspline import BSpline
 from .tucker_tensor import TuckerTensor, Factors, tucker_dot
 
 
@@ -596,3 +598,69 @@ def _energy(h: StrayField, m: Magnetization, quad_grid: TensorGrid) -> jax.Array
     H = h.tt(quad_grid, mul_weights=True)
     M = m.tt(quad_grid)
     return -1 / 2 * tucker_dot(H, M)
+
+
+def const_ft(const: jax.Array, lb, ub):
+    assert len(lb) == len(ub)
+    elm = BSpline(
+        TensorGrid(*(jnp.linspace(l, u, 2) for l, u in zip(lb, ub))),
+        degree=0
+    )
+    return FunctionalTucker(const[*([None] * len(lb))], elm)
+
+
+def effective_field(
+    mag_model: TPELM,
+    field_model: TPELM, 
+    tg: TensorGrid, 
+    lex: float,
+    K: float, 
+    easy_axis: jax.Array,
+    tol_mag: Tol = 0.0,
+    tol_field: Tol = 0.0,
+    **stray_field_kwargs
+):
+    pot_state = PotentialState.init(
+        pot_elm=field_model,
+        mag_elm=mag_model,
+        target_quad_grid=tg,
+        **stray_field_kwargs
+    )
+    fit_mag = mag_model.fitting_fn(tg, tol=tol_mag)
+    fit_field = field_model.fitting_fn(tg, tol=tol_field)
+    mag_factors, mag_partials = mag_model.factors_and_partials(tg, order=2)
+    lb, ub = mag_model.domain.bounds
+    
+    def _exchange_field(mag) -> FunctionalTucker:
+        lap_m = jnp.asarray([fit_field(TuckerTensor(lex ** 2 * mag.core, f)).core for f in mag_partials])
+        h_ex_core = jnp.sum(lap_m, axis=0)
+        h_ex = FunctionalTucker(h_ex_core, field_model)
+        return h_ex
+    
+    def _anisotropy_field(mag: FunctionalTucker) -> FunctionalTucker:
+        P = K * jnp.outer(easy_axis, easy_axis)
+        core = jnp.apply_along_axis(lambda m: P @ m, -1, mag.core)
+        return fit_field(TuckerTensor(core, mag_factors))
+    
+    def _stray_field(mag) -> FunctionalTucker:
+        superpot = superpotential(pot_state, mag)
+        scalarpot = scalar_potential(pot_state, superpot)
+        return stray_field(pot_state, scalarpot)[0]
+        
+    def _applied_field(hext: jax.Array | FunctionalTucker | None = None) -> FunctionalTucker:
+        if hext is None:
+            hext = jnp.array([0.0, 0.0, 0.0])
+        if isinstance(hext, jax.Array):
+            if hext.ndim == 1:
+                hext = const_ft(hext, lb, ub)
+        return fit_field(hext)
+        
+    def heff(mag: FunctionalTucker, ha: jax.Array | FunctionalTucker | None = None) -> FunctionalTucker:
+        mag = fit_mag(mag)
+        h_ex = _exchange_field(mag)
+        hani = _anisotropy_field(mag)
+        hd = _stray_field(mag)
+        ha = _applied_field(ha)
+        return hani + ha + h_ex + hd
+    
+    return heff

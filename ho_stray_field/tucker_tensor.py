@@ -1,6 +1,8 @@
 from typing import NamedTuple, TypeAlias, Self
 import string
 
+from jaxtyping import Scalar
+
 from .prelude import *
 
 
@@ -18,6 +20,25 @@ class TuckerTensor(NamedTuple):
     """
     core: Core
     factors: Factors
+
+    def __add__(self, other: Self) -> Self:
+        return self._replace(core=self.core + other.core)
+    
+    def __sub__(self, other: Self) -> Self:
+        return self._replace(core=self.core - other.core)
+    
+    def __mul__(self, factor: Scalar | float) -> Self:
+        assert jnp.asarray(factor).shape == ()
+        return self._replace(core=factor * self.core)
+    
+    def __truediv__(self, factor: Scalar | float) -> Self:
+        assert jnp.asarray(factor).shape == ()
+        return self._replace(core=self.core / factor)
+    
+    def __neg__(self) -> Self:
+        return self._replace(core=-self.core)
+    
+    __rmul__ = __mul__
 
     def to_tensor(self) -> jax.Array:
         """Expands the Tucker tensor to a full tensor
