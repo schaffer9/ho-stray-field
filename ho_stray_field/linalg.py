@@ -2,6 +2,7 @@
 from typing import Callable, Sequence
 from dataclasses import replace
 
+from jax import custom_vjp
 import optax
 from jaxtyping import Scalar
 
@@ -13,16 +14,43 @@ from .tucker_tensor import TuckerTensor, Factors, Core
 def reyleigh_quotient(
     h: Callable[[FunctionalTucker], FunctionalTucker], 
     v: FunctionalTucker, 
-    tg: TensorGrid
+    tg: TensorGrid,
+    custom_vjp: bool = True,
 ) -> Scalar:
     weights = tuple(jnp.sqrt(w) for w in tg.weights) if tg.weights is not None else None
     tg = TensorGrid(*tg.tensor_grid, weights=weights)
-    hv = h(v)
     facs_v = v.factors(tg, mul_weights=True)
-    facs_hv = hv.factors(tg, mul_weights=True)
-    vhv = TuckerTensor(v.core, facs_v).dot(TuckerTensor(hv.core, facs_hv))
+
+    def _vhv(h, v_core, tg, elm):
+        _v = FunctionalTucker(v_core, elm)
+        hv = h(_v)
+        facs_v = _v.factors(tg, mul_weights=True)
+        facs_hv = hv.factors(tg, mul_weights=True)
+        vhv = TuckerTensor(_v.core, facs_v).dot(TuckerTensor(hv.core, facs_hv))
+        return vhv
+
+    if custom_vjp:
+        # we use a custom vjp rule to avoid differentiation of the linear operator.
+        _vhv = jax.custom_vjp(_vhv, nondiff_argnums=(0,))
+    
+        def _vhv_fwd(h, v_core, tg, elm):
+            _v = FunctionalTucker(v_core, elm)
+            hv = h(_v)
+            facs_v = _v.factors(tg, mul_weights=True)
+            facs_hv = hv.factors(tg, mul_weights=True)
+            vhv = TuckerTensor(_v.core, facs_v).dot(TuckerTensor(hv.core, facs_hv))
+            return vhv, (hv.core, facs_v, facs_hv)
+
+        def _vhv_bwd(h, res, g):
+            hv_core, facs_v, facs_hv = res
+            facs = tuple(fv.T @ fhv for fv, fhv in zip(facs_v, facs_hv))
+            hv = TuckerTensor(hv_core, facs).to_tensor()
+            return (2 * hv * g, None, None)
+
+        _vhv.defvjp(_vhv_fwd, _vhv_bwd)
+    
     vv = TuckerTensor(v.core, facs_v).dot(TuckerTensor(v.core, facs_v))
-    return vhv / vv
+    return _vhv(h, v.core, tg, v.elm) / vv
 
 
 def ortho(u: FunctionalTucker, base: Sequence[Core] | Core, tg: TensorGrid, unroll: bool | int = 1) -> FunctionalTucker:
